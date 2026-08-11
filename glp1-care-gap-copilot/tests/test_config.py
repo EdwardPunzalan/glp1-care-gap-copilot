@@ -1,7 +1,9 @@
 """Secrets parsing — a malformed value must degrade, never raise."""
 
 from glp1_care_gap_copilot.config import (
+    DEFAULT_DIABETES_ONLY_LAB_NAMES,
     DEFAULT_GLP1_MED_NAME_FRAGMENTS,
+    DEFAULT_REQUIRED_LAB_NAMES,
     DEFAULT_LLM_MODEL,
     DEFAULT_TASK_TITLE_PREFIX,
     DEFAULT_WEIGHT_CHECK_INTERVAL_DAYS,
@@ -71,6 +73,37 @@ def test_empty_list_secret_falls_back_to_default() -> None:
     config = Config.from_secrets({"GLP1_MED_NAME_FRAGMENTS": " , , "})
 
     assert config.glp1_med_name_fragments == DEFAULT_GLP1_MED_NAME_FRAGMENTS
+
+
+def test_blank_declared_variable_uses_defaults_quietly() -> None:
+    # A manifest-declared variable that was never configured arrives as "",
+    # which is the ordinary default path — not a misconfiguration.
+    config = Config.from_secrets(
+        {
+            "GLP1_MED_NAME_FRAGMENTS": "",
+            "OBESITY_ICD10_PREFIXES": "",
+            "REQUIRED_LAB_NAMES": "",
+            "DIABETES_ONLY_LAB_NAMES": "",
+        }
+    )
+
+    assert config.glp1_med_name_fragments == DEFAULT_GLP1_MED_NAME_FRAGMENTS
+    assert config.required_lab_names == DEFAULT_REQUIRED_LAB_NAMES
+    # Blank cannot mean "cleared" — it is indistinguishable from never-set.
+    assert config.diabetes_only_lab_names == DEFAULT_DIABETES_ONLY_LAB_NAMES
+
+
+def test_sentinel_clears_a_clearable_list() -> None:
+    config = Config.from_secrets({"DIABETES_ONLY_LAB_NAMES": "none"})
+
+    assert config.diabetes_only_lab_names == ()
+
+
+def test_sentinel_is_not_honored_on_non_clearable_lists() -> None:
+    # "none" is a literal entry for lists that must never be empty.
+    config = Config.from_secrets({"GLP1_MED_NAME_FRAGMENTS": "none"})
+
+    assert config.glp1_med_name_fragments == ("none",)
 
 
 def test_llm_kill_switch_accepts_common_spellings() -> None:

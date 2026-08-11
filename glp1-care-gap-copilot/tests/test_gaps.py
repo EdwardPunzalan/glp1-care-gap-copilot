@@ -189,14 +189,14 @@ def test_each_expected_lab_is_evaluated_independently() -> None:
     patient = PatientFactory.create()
     add_lab_result(patient, "Hemoglobin A1c", days_ago(5))
     config = Config.from_secrets(
-        {"REQUIRED_LAB_NAMES": "hemoglobin a1c,lipid panel", "DIABETES_ONLY_LAB_NAMES": ""}
+        {"REQUIRED_LAB_NAMES": "hemoglobin a1c,lipid panel", "DIABETES_ONLY_LAB_NAMES": "none"}
     )
 
     gap = find_gap(str(patient.id), GAP_LABS_OVERDUE, config)
 
     assert gap is not None
-    # With the conditional rule cleared, A1c applies to every patient — and it
-    # is satisfied here, so only the lipid panel is reported missing.
+    # With the conditional rule cleared by the sentinel, A1c applies to every
+    # patient — and it is satisfied here, so only the lipid panel is missing.
     assert gap.detail["missing"] == ["lipid panel"]
 
 

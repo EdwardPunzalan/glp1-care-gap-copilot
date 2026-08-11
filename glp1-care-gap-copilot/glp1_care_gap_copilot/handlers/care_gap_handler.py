@@ -47,7 +47,9 @@ class GLP1CareGapHandler(BaseHandler):
 
         cohort = evaluate_cohort(patient_id, config)
         if not cohort.in_scope:
-            # Out of scope produces no card at all, not an empty one.
+            # Out of scope produces no card at all, not an empty one. Logged
+            # because "no card" and "plugin broken" look identical in the UI.
+            log.info("[glp1-care-gap-copilot] patient out of scope; no card")
             return []
 
         now = datetime.now(timezone.utc)
@@ -61,4 +63,9 @@ class GLP1CareGapHandler(BaseHandler):
         )
 
         card = build_card(patient_id, gaps, suppressed, narrative, config)
+        log.info(
+            "[glp1-care-gap-copilot] card rendered: "
+            f"on_glp1={cohort.on_glp1_medication} "
+            f"gaps={[gap.key for gap in gaps]} suppressed={sorted(suppressed)}"
+        )
         return [card.apply()]

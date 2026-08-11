@@ -32,6 +32,17 @@ def test_medication_matching_is_case_insensitive() -> None:
     assert evaluate_cohort(str(patient.id), CONFIG).on_glp1_medication is True
 
 
+def test_brand_name_medications_are_in_scope() -> None:
+    # Canvas stores the brand in the coding display ("Ozempic 4 mg tablet"), so
+    # a generics-only fragment list misses nearly every real GLP-1 patient.
+    # Found on a live instance: an Ozempic patient scored out of scope.
+    for brand in ("Ozempic 4 mg tablet", "Wegovy 2.4 MG/0.75ML Pen", "Mounjaro 5 MG/0.5ML"):
+        patient = PatientFactory.create()
+        add_medication(patient, brand)
+
+        assert evaluate_cohort(str(patient.id), CONFIG).on_glp1_medication is True, brand
+
+
 def test_inactive_glp1_does_not_put_patient_in_scope() -> None:
     patient = PatientFactory.create()
     add_medication(patient, "Semaglutide 0.5 MG", status=Status.INACTIVE)

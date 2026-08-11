@@ -15,12 +15,31 @@ DEFAULT_LLM_MODEL = "claude-sonnet-5"
 DEFAULT_WEIGHT_CHECK_INTERVAL_DAYS = 30
 DEFAULT_LAB_INTERVAL_DAYS = 90
 DEFAULT_FOLLOWUP_HORIZON_DAYS = 90
+# Both generic and brand names, because Canvas stores the *brand* in the
+# medication coding display ("Ozempic 4 mg tablet") — a generics-only list
+# silently misses nearly every real GLP-1 patient. Confirmed on a live instance:
+# a patient on Ozempic was scored out of scope until the brands were added.
 DEFAULT_GLP1_MED_NAME_FRAGMENTS = (
+    # semaglutide
     "semaglutide",
+    "ozempic",
+    "wegovy",
+    "rybelsus",
+    # tirzepatide
     "tirzepatide",
+    "mounjaro",
+    "zepbound",
+    # liraglutide
     "liraglutide",
+    "victoza",
+    "saxenda",
+    # dulaglutide
     "dulaglutide",
+    "trulicity",
+    # exenatide
     "exenatide",
+    "byetta",
+    "bydureon",
 )
 DEFAULT_OBESITY_ICD10_PREFIXES = ("E66", "Z68.4")
 DEFAULT_REQUIRED_LAB_NAMES = (
@@ -34,6 +53,10 @@ DEFAULT_REQUIRED_LAB_NAMES = (
 DEFAULT_DIABETES_ONLY_LAB_NAMES = ("hemoglobin a1c",)
 DEFAULT_DIABETES_ICD10_PREFIXES = ("E11",)
 DEFAULT_TASK_TITLE_PREFIX = "GLP-1 Copilot"
+
+# Sentinel a deployment sets to mean "no entries" on a clearable list, since a
+# blank value is indistinguishable from an unconfigured one.
+EMPTY_LIST_SENTINEL = "none"
 
 _TRUE_VALUES = frozenset({"true", "1", "yes", "y", "on"})
 _FALSE_VALUES = frozenset({"false", "0", "no", "n", "off"})
@@ -92,23 +115,27 @@ def _csv(
     secrets: dict[str, Any],
     key: str,
     default: tuple[str, ...],
-    allow_empty: bool = False,
+    clearable: bool = False,
 ) -> tuple[str, ...]:
     """Parse a comma-separated secret.
 
-    `allow_empty` distinguishes lists where clearing the value is a meaningful
-    instruction (drop the conditional-lab rule entirely) from lists where an
-    empty value would silently disable detection and almost certainly means the
-    secret was set by mistake.
+    A variable declared in the manifest but never configured arrives as `""`,
+    not as absent — so a blank value cannot be distinguished from "never set"
+    and must mean "use the default". Lists that a deployment may legitimately
+    want *empty* therefore need an explicit sentinel: `clearable` lists accept
+    the literal `none` to mean "no entries".
     """
     raw = secrets.get(key)
-    if raw is None:
+    # Blank is the ordinary default path on a fresh install, so it stays silent.
+    # Warning here fired on every chart render, for every patient.
+    if raw is None or str(raw).strip() == "":
         return default
-    items = tuple(part.strip() for part in str(raw).split(",") if part.strip())
+    text = str(raw).strip()
+    if clearable and text.lower() == EMPTY_LIST_SENTINEL:
+        return ()
+    items = tuple(part.strip() for part in text.split(",") if part.strip())
     if not items:
-        if allow_empty:
-            return ()
-        log.warning(f"[glp1-care-gap-copilot] {key} is empty; using defaults")
+        log.warning(f"[glp1-care-gap-copilot] {key}={raw!r} has no usable entries; using defaults")
         return default
     return items
 
@@ -162,7 +189,7 @@ class Config:
                 secrets,
                 "DIABETES_ONLY_LAB_NAMES",
                 DEFAULT_DIABETES_ONLY_LAB_NAMES,
-                allow_empty=True,
+                clearable=True,
             ),
             diabetes_icd10_prefixes=_csv(
                 secrets, "DIABETES_ICD10_PREFIXES", DEFAULT_DIABETES_ICD10_PREFIXES
