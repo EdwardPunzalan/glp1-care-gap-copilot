@@ -2,12 +2,12 @@
     "sdk_version": "0.1.4",
     "plugin_version": "0.0.1",
     "name": "glp1_care_gap_copilot",
-    "description": "Edit the description in CANVAS_MANIFEST.json",
+    "description": "Surfaces GLP-1 monitoring care gaps (stale weight, overdue labs, missing follow-up) as a protocol card with one-click, clinician-reviewed actions.",
     "components": {
         "handlers": [
             {
-                "class": "glp1_care_gap_copilot.handlers.event_handlers:NewOfficeVisitNoteHandler",
-                "description": "A handler that listens for an event and sets an inspirational goal."
+                "class": "glp1_care_gap_copilot.handlers.care_gap_handler:GLP1CareGapHandler",
+                "description": "Computes GLP-1 care gaps when a note or patient chart is opened and upserts a protocol card."
             }
         ],
         "commands": [],
@@ -15,7 +15,22 @@
         "effects": [],
         "views": []
     },
-    "variables": [],
+    "variables": [
+        {"name": "ANTHROPIC_API_KEY", "sensitive": true},
+        {"name": "LLM_MODEL"},
+        {"name": "ENABLE_LLM_RATIONALE"},
+        {"name": "WEIGHT_CHECK_INTERVAL_DAYS"},
+        {"name": "LAB_INTERVAL_DAYS"},
+        {"name": "FOLLOWUP_HORIZON_DAYS"},
+        {"name": "GLP1_MED_NAME_FRAGMENTS"},
+        {"name": "OBESITY_ICD10_PREFIXES"},
+        {"name": "REQUIRED_LAB_NAMES"},
+        {"name": "DIABETES_ONLY_LAB_NAMES"},
+        {"name": "DIABETES_ICD10_PREFIXES"},
+        {"name": "OUTREACH_TEAM_DBID"},
+        {"name": "LAB_PARTNER_NAME"},
+        {"name": "TASK_TITLE_PREFIX"}
+    ],
     "tags": {},
     "references": [],
     "license": "",

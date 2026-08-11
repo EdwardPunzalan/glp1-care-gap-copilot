@@ -2,7 +2,7 @@
 
 **Proposed plugin name:** `glp1-care-gap-copilot`
 **Date:** 2026-08-11
-**Status:** Awaiting approval
+**Status:** Approved and implemented (see "Resolutions" at the end)
 
 ---
 
@@ -248,7 +248,35 @@ no identifiers) and cover threshold boundaries on both sides.
 
 ---
 
-## Open question for you
+## Resolutions (2026-08-11)
 
-**§7 — lab relevance.** I made it deterministic/configurable rather than LLM-decided, for the reason
-stated. Confirm that's right, or tell me to hand lab selection to the model.
+**§7 — lab relevance: confirmed deterministic.** Lab selection stays a configurable rule set; the
+LLM only phrases the summary sentence. Implemented as two additional secrets beyond §12, so the
+conditional rule is as configurable and auditable as everything else:
+
+| Secret | Default | Purpose |
+|---|---|---|
+| `DIABETES_ONLY_LAB_NAMES` | `hemoglobin a1c` | Labs expected only with a matching diagnosis. May be set empty to make every configured lab unconditional. |
+| `DIABETES_ICD10_PREFIXES` | `E11` | Diagnosis prefixes that gate the above. |
+
+**§8 / §12 — action buttons degrade gracefully.** No runtime values were available for
+`LAB_PARTNER_NAME` or `OUTREACH_TEAM_DBID`, so both are unset by default. An unresolvable lab
+partner or test renders the labs gap as an informational bullet with no button; an unset outreach
+team stages the task unassigned rather than dropping the button.
+
+### Corrections found during implementation
+
+- **§5 cohort — medication matching goes through codings, not a name field.** The SDK `Medication`
+  model has no `name` attribute ([data-medication](https://docs.canvasmedical.com/sdk/data-medication/));
+  the drug name lives on `MedicationCoding.display`. Cohort matching filters
+  `codings__display__icontains` accordingly.
+- **§5 cohort — ICD-10 codes are matched dotted and undotted.** Instances store both `Z68.41` and
+  `Z6841`, so each configured prefix is matched in both forms rather than assuming one convention.
+- **§4 trigger — disallowed-effect claim verified.** Canvas disallows `ADD_OR_UPDATE_PROTOCOL_CARD`
+  only from `PATIENT_CHART__CONDITIONS` and `PATIENT_CHART_SUMMARY__SECTION_CONFIGURATION`
+  ([effects](https://docs.canvasmedical.com/sdk/effects/)). Both chosen events are safe.
+
+### Delivered
+
+104 tests, 100% statement coverage, clean under `mypy` with the project's strict settings, and
+`canvas validate-manifest` passes.
