@@ -13,6 +13,7 @@ from the same facts.
 
 import re
 from http import HTTPStatus
+from typing import Any
 
 from logger import log
 
@@ -43,13 +44,13 @@ def build_payload(
     gaps: list[Gap],
     on_glp1_medication: bool,
     weeks_since_last_visit: int | None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Assemble the PHI-free payload sent to the model.
 
     Only derived scalars go in. No name, DOB, MRN, patient id, contact info,
     medication name or dose, raw lab value, note text, or provider identity.
     """
-    payload: dict[str, object] = {
+    payload: dict[str, Any] = {
         "gaps": [{"type": gap.key, **gap.detail} for gap in gaps],
     }
     if on_glp1_medication:

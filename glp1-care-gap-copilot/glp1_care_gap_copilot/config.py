@@ -6,7 +6,6 @@ value never raises — it logs and falls back to the documented default, because
 a bad secret must not stop the card from rendering.
 """
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -40,7 +39,7 @@ _TRUE_VALUES = frozenset({"true", "1", "yes", "y", "on"})
 _FALSE_VALUES = frozenset({"false", "0", "no", "n", "off"})
 
 
-def _text(secrets: Mapping[str, Any], key: str, default: str = "") -> str:
+def _text(secrets: dict[str, Any], key: str, default: str = "") -> str:
     value = secrets.get(key)
     if value is None:
         return default
@@ -48,7 +47,7 @@ def _text(secrets: Mapping[str, Any], key: str, default: str = "") -> str:
     return text or default
 
 
-def _positive_int(secrets: Mapping[str, Any], key: str, default: int) -> int:
+def _positive_int(secrets: dict[str, Any], key: str, default: int) -> int:
     raw = secrets.get(key)
     if raw is None or str(raw).strip() == "":
         return default
@@ -63,7 +62,7 @@ def _positive_int(secrets: Mapping[str, Any], key: str, default: int) -> int:
     return value
 
 
-def _optional_int(secrets: Mapping[str, Any], key: str) -> int | None:
+def _optional_int(secrets: dict[str, Any], key: str) -> int | None:
     raw = secrets.get(key)
     if raw is None or str(raw).strip() == "":
         return None
@@ -74,7 +73,7 @@ def _optional_int(secrets: Mapping[str, Any], key: str) -> int | None:
         return None
 
 
-def _flag(secrets: Mapping[str, Any], key: str, default: bool) -> bool:
+def _flag(secrets: dict[str, Any], key: str, default: bool) -> bool:
     raw = secrets.get(key)
     if raw is None or str(raw).strip() == "":
         return default
@@ -90,7 +89,7 @@ def _flag(secrets: Mapping[str, Any], key: str, default: bool) -> bool:
 
 
 def _csv(
-    secrets: Mapping[str, Any],
+    secrets: dict[str, Any],
     key: str,
     default: tuple[str, ...],
     allow_empty: bool = False,
@@ -134,7 +133,7 @@ class Config:
     task_title_prefix: str
 
     @classmethod
-    def from_secrets(cls, secrets: Mapping[str, Any] | None) -> "Config":
+    def from_secrets(cls, secrets: dict[str, Any] | None) -> "Config":
         """Build a config from plugin secrets, substituting defaults for bad input."""
         secrets = secrets or {}
         return cls(

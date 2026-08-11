@@ -137,7 +137,14 @@ from rendering.
 uv run pytest                 # 104 tests
 uv run pytest --cov=glp1_care_gap_copilot --cov-report=term-missing
 uv run mypy glp1_care_gap_copilot tests
+uv run canvas validate glp1_care_gap_copilot   # run before every deploy
 ```
+
+**Run `canvas validate` before deploying.** Canvas executes plugins under
+RestrictedPython, which rejects imports and builtins that pytest and mypy accept
+without complaint — `collections.abc` and the name `object` are both unavailable,
+for instance. Only `canvas validate` loads the handlers in that sandbox, so it is
+the only local check that catches this class of failure.
 
 ## Out of scope for v1
 

@@ -12,7 +12,7 @@ patient's chart.
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import cast
+from typing import Any, cast
 
 from django.db.models import Q
 
@@ -40,7 +40,7 @@ class Gap:
 
     key: str
     label: str
-    detail: dict[str, object] = field(default_factory=dict)
+    detail: dict[str, Any] = field(default_factory=dict)
 
 
 def _days_since(moment: datetime | None, now: datetime) -> int | None:
