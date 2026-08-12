@@ -58,8 +58,22 @@ DEFAULT_TASK_TITLE_PREFIX = "GLP-1 Copilot"
 # blank value is indistinguishable from an unconfigured one.
 EMPTY_LIST_SENTINEL = "none"
 
+# Variables whose value must never reach the logs, whatever goes wrong parsing
+# them. Redaction is keyed on the variable name rather than left to the choice
+# of parser, so a value declared sensitive in the manifest stays masked even if
+# it is later read through a parser that echoes malformed input.
+SENSITIVE_VARIABLES = frozenset({"ANTHROPIC_API_KEY"})
+REDACTED = "<redacted>"
+
 _TRUE_VALUES = frozenset({"true", "1", "yes", "y", "on"})
 _FALSE_VALUES = frozenset({"false", "0", "no", "n", "off"})
+
+
+def _loggable(key: str, raw: Any) -> str:
+    """Render a variable's value for a log message, masking sensitive ones."""
+    if key in SENSITIVE_VARIABLES:
+        return REDACTED
+    return repr(raw)
 
 
 def _text(secrets: dict[str, Any], key: str, default: str = "") -> str:
@@ -77,7 +91,10 @@ def _positive_int(secrets: dict[str, Any], key: str, default: int) -> int:
     try:
         value = int(str(raw).strip())
     except (TypeError, ValueError):
-        log.warning(f"[glp1-care-gap-copilot] {key}={raw!r} is not an integer; using {default}")
+        log.warning(
+            f"[glp1-care-gap-copilot] {key}={_loggable(key, raw)} is not an integer; "
+            f"using {default}"
+        )
         return default
     if value <= 0:
         log.warning(f"[glp1-care-gap-copilot] {key}={value} must be positive; using {default}")
@@ -92,7 +109,7 @@ def _optional_int(secrets: dict[str, Any], key: str) -> int | None:
     try:
         return int(str(raw).strip())
     except (TypeError, ValueError):
-        log.warning(f"[glp1-care-gap-copilot] {key}={raw!r} is not an integer; ignoring")
+        log.warning(f"[glp1-care-gap-copilot] {key}={_loggable(key, raw)} is not an integer; ignoring")
         return None
 
 
@@ -107,7 +124,7 @@ def _flag(secrets: dict[str, Any], key: str, default: bool) -> bool:
         return True
     if text in _FALSE_VALUES:
         return False
-    log.warning(f"[glp1-care-gap-copilot] {key}={raw!r} is not a boolean; using {default}")
+    log.warning(f"[glp1-care-gap-copilot] {key}={_loggable(key, raw)} is not a boolean; using {default}")
     return default
 
 
@@ -135,7 +152,10 @@ def _csv(
         return ()
     items = tuple(part.strip() for part in text.split(",") if part.strip())
     if not items:
-        log.warning(f"[glp1-care-gap-copilot] {key}={raw!r} has no usable entries; using defaults")
+        log.warning(
+            f"[glp1-care-gap-copilot] {key}={_loggable(key, raw)} has no usable entries; "
+            "using defaults"
+        )
         return default
     return items
 

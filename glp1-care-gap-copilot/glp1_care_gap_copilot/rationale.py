@@ -27,6 +27,8 @@ from glp1_care_gap_copilot.gaps import (
 
 GLP1_MED_CLASS = "GLP-1 receptor agonist"
 MAX_RATIONALE_CHARS = 320
+# Error text is truncated rather than logged whole — see the LLM failure path.
+MAX_ERROR_CHARS = 200
 MAX_OUTPUT_TOKENS = 200
 
 SYSTEM_PROMPT = (
@@ -131,7 +133,13 @@ def generate_rationale(
         client.set_user_prompt([json.dumps(payload)])
         response = client.request()
     except Exception as error:  # noqa: BLE001 - the card must render regardless
-        log.warning(f"[glp1-care-gap-copilot] LLM rationale failed: {error}")
+        # Exception text is bounded and never logged whole: a client that
+        # embeds request or auth detail in its error message would otherwise
+        # write that straight to the instance log.
+        log.warning(
+            f"[glp1-care-gap-copilot] LLM rationale failed: "
+            f"{type(error).__name__}: {str(error)[:MAX_ERROR_CHARS]}"
+        )
         return fallback
 
     if response.code != HTTPStatus.OK:
