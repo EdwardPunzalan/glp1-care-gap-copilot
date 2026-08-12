@@ -177,6 +177,9 @@ Verified live on a Canvas instance (`xpc-dev`), against a real patient:
 - Card rendering with the templated narrative
 - Labs gap rendering **without** a button when no lab partner is configured
 - The outreach button staging an uncommitted `TaskCommand` carrying the dedupe marker
+- **Duplicate suppression**: after committing that task, the follow-up gap kept
+  rendering but lost its button and gained "— outreach task already open", while
+  the other two gaps were unaffected
 
 Two paths are **configuration-gated and have not been exercised against live
 third-party services**. Both are covered by unit tests, and both degrade to a
