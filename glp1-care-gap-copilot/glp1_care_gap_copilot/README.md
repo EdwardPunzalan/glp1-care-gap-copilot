@@ -125,11 +125,33 @@ and falls back to its default rather than breaking the card.
 
 ## Performance
 
-Query count per render is fixed and does not grow with chart size: the cohort
-check runs first and short-circuits, latest-value lookups use
-`.values_list(...).first()` rather than hydrating history, and existence checks
-use `.exists()`. The LLM call is the only network I/O and never blocks the card
-from rendering.
+The handler runs on every note open and every chart load, so per-render cost is
+what matters. Measured against a real database:
+
+| Scenario | Queries |
+|---|---|
+| Out of scope (most patients) | **2** |
+| In scope, sparse chart | **9** |
+| In scope, 39 observations + 39 appointments + 20 lab reports | **9** |
+
+Query count is **flat with respect to chart size**, and
+`tests/test_query_budget.py` asserts it so a per-row query fails CI rather than
+production. The cohort check runs first and short-circuits, so the majority of
+patients — who are not on a GLP-1 — cost only two `.exists()` calls.
+
+No model instances are hydrated anywhere: reads are `.exists()` for booleans and
+`.values_list(...).first()` for single scalars, with relations crossed inside the
+query predicate rather than in Python. The plugin performs **no database writes**.
+
+**One scaling caveat.** The labs check issues one query per entry in
+`REQUIRED_LAB_NAMES`. This is bounded by configuration rather than by patient
+data, and at the default of 3 it is negligible. Configuring a large number of
+labs (say 30) would issue that many queries per render on a hot path — at that
+point it would be worth matching lab names in Python against a single fetch
+instead. See the DB performance review in `.cpa-workflow-artifacts/` for the
+reasoning behind the current shape.
+
+The LLM call is the only network I/O and never blocks the card from rendering.
 
 ## Development
 
