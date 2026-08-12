@@ -103,8 +103,17 @@ disable the model path entirely.
 
 ## Configuration
 
-All values are parsed defensively — a malformed or missing value logs a warning
-and falls back to its default rather than breaking the card.
+All values are parsed defensively — a malformed value logs a warning and falls
+back to its default rather than breaking the card.
+
+**Blank means "use the default", not "empty".** A variable declared in the
+manifest but never configured reaches the plugin as an empty string, which is
+indistinguishable from one an operator cleared on purpose. Blank therefore
+always means the default. To genuinely empty a list, set it to the literal
+`none` — currently supported only on `DIABETES_ONLY_LAB_NAMES`, the one list
+where an empty value is meaningful (it makes every configured lab apply to every
+patient). On the other lists `none` is treated as an ordinary entry, because an
+empty cohort or lab list would silently disable detection.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -117,7 +126,7 @@ and falls back to its default rather than breaking the card.
 | `GLP1_MED_NAME_FRAGMENTS` | `semaglutide,tirzepatide,liraglutide,dulaglutide,exenatide` | Cohort meds |
 | `OBESITY_ICD10_PREFIXES` | `E66,Z68.4` | Cohort conditions |
 | `REQUIRED_LAB_NAMES` | `hemoglobin a1c,comprehensive metabolic panel,lipid panel` | Expected labs |
-| `DIABETES_ONLY_LAB_NAMES` | `hemoglobin a1c` | Labs expected only with a diabetes diagnosis (may be set empty) |
+| `DIABETES_ONLY_LAB_NAMES` | `hemoglobin a1c` | Labs expected only with a diabetes diagnosis. Set to the literal `none` to make every configured lab unconditional — see below |
 | `DIABETES_ICD10_PREFIXES` | `E11` | Diagnosis prefixes gating the above |
 | `OUTREACH_TEAM_DBID` | — | Default task assignee (Team `dbid`) |
 | `LAB_PARTNER_NAME` | — | Lab partner for order commands |
