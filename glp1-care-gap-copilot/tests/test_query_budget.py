@@ -29,7 +29,7 @@ from tests.factories import (
     days_ahead,
 )
 
-SECRETS = {"ENABLE_LLM_RATIONALE": "false"}
+SECRETS: dict[str, str] = {}
 
 # Worst realistic case: in scope, all three gaps open, all three labs expected.
 MAX_QUERIES_IN_SCOPE = 12

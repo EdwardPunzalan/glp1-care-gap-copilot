@@ -1,6 +1,6 @@
 {
     "sdk_version": "0.1.4",
-    "plugin_version": "1.0.0",
+    "plugin_version": "1.1.0",
     "name": "glp1_care_gap_copilot",
     "description": "Surfaces GLP-1 monitoring care gaps (stale weight, overdue labs, missing follow-up) as a protocol card with one-click, clinician-reviewed actions.",
     "components": {
@@ -16,16 +16,6 @@
         "views": []
     },
     "variables": [
-        {
-            "name": "ANTHROPIC_API_KEY",
-            "sensitive": true
-        },
-        {
-            "name": "LLM_MODEL"
-        },
-        {
-            "name": "ENABLE_LLM_RATIONALE"
-        },
         {
             "name": "WEIGHT_CHECK_INTERVAL_DAYS"
         },

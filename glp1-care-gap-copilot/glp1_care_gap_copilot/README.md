@@ -11,8 +11,8 @@ thresholds, and shows them in one place.
 **It is not** an autonomous agent. It never creates a task, never orders a lab,
 and never writes to the chart on its own. Every write happens only when a
 clinician clicks a button, and even then the command is *staged into the note
-uncommitted* — the clinician reviews and signs it. The LLM-generated text is a
-non-actionable summary; it makes no clinical decisions.
+uncommitted* — the clinician reviews and signs it. The narrative sentence
+restates detected facts; it makes no clinical decisions.
 
 ## When it runs
 
@@ -46,7 +46,7 @@ Out-of-scope patients produce **no card at all**, not an empty one.
 | Labs overdue | An expected lab has no result within N days | 90 days |
 | No follow-up | No future non-cancelled appointment within N days | 90 days |
 
-**Which labs are expected is decided by rule, not by the model.** Labs listed in
+**Which labs are expected is decided by explicit rule.** Labs listed in
 `DIABETES_ONLY_LAB_NAMES` apply only to patients carrying a matching diagnosis
 (`DIABETES_ICD10_PREFIXES`); everything else in `REQUIRED_LAB_NAMES` always
 applies. Choosing which labs a patient clinically needs is a clinical decision,
@@ -75,31 +75,22 @@ starts with `[{TASK_TITLE_PREFIX}: {gap_key}]`. If one exists the gap **still
 renders**, annotated "outreach task already open", with the button removed.
 Hiding the gap would mislead; keeping the button would duplicate work.
 
-## LLM narrative and PHI minimization
+## The narrative
 
-The one-line rationale is generated with `LlmAnthropic`. **No raw chart data is
-ever sent.** The payload is built by construction from derived scalars only:
+The one-line sentence at the top of the card is assembled deterministically from
+the same derived scalars the gap rules produce. It restates what was detected and
+nothing more — no clinical advice, no recommendation, no inference.
 
-```json
-{
-  "gaps": [
-    {"type": "stale_weight", "days_since_last": 58},
-    {"type": "labs_overdue", "missing": ["hemoglobin a1c"], "days_since_last": 214}
-  ],
-  "med_class": "GLP-1 receptor agonist",
-  "weeks_since_last_visit": 12
-}
-```
+> Open GLP-1 monitoring gaps: no weight ever recorded; comprehensive metabolic
+> panel, lipid panel not resulted within the monitoring interval; no follow-up
+> booked in the next 90 days.
 
-Never sent: name, DOB, MRN, patient id, address, contact info, medication names
-or doses, raw lab values, note text, provider identity. `tests/test_rationale.py`
-asserts this by allow-list, so any new payload key fails the suite until it is
-explicitly declared safe.
-
-**The card always renders.** A missing key, a disabled kill switch, an HTTP
-error, an exception, or an empty response all fall back to a deterministic
-templated sentence built from the same facts. Set `ENABLE_LLM_RATIONALE=false` to
-disable the model path entirely.
+This was originally LLM-generated with a templated fallback. **The model path was
+removed in 1.1.0** — it billed per render on a path that runs for every chart
+open, and the fallback it degraded to was already what clinicians saw in
+practice. Removing it also removed the plugin's only network I/O and its only
+transmission of anything to a third party, so no patient-derived data leaves the
+instance at all.
 
 ## Configuration
 
@@ -117,9 +108,6 @@ empty cohort or lab list would silently disable detection.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | LLM key (sensitive) |
-| `LLM_MODEL` | `claude-sonnet-5` | Model id |
-| `ENABLE_LLM_RATIONALE` | `true` | Kill switch for the LLM path |
 | `WEIGHT_CHECK_INTERVAL_DAYS` | `30` | Stale-weight threshold |
 | `LAB_INTERVAL_DAYS` | `90` | Lab recency threshold |
 | `FOLLOWUP_HORIZON_DAYS` | `90` | Follow-up window |
@@ -160,12 +148,12 @@ point it would be worth matching lab names in Python against a single fetch
 instead. See the DB performance review in `.cpa-workflow-artifacts/` for the
 reasoning behind the current shape.
 
-The LLM call is the only network I/O and never blocks the card from rendering.
+The plugin makes no network calls at all.
 
 ## Development
 
 ```bash
-uv run pytest                 # 104 tests
+uv run pytest                 # 102 tests
 uv run pytest --cov=glp1_care_gap_copilot --cov-report=term-missing
 uv run mypy glp1_care_gap_copilot tests
 uv run canvas validate glp1_care_gap_copilot   # run before every deploy
@@ -196,13 +184,10 @@ verified fallback when unconfigured — which is how they currently run:
 
 | Path | Requires | Unconfigured behavior (verified) |
 |---|---|---|
-| LLM narrative | `ANTHROPIC_API_KEY` | Deterministic templated sentence |
-| Lab-order button | `LAB_PARTNER_NAME` resolving to an active `LabPartner` offering the configured tests | Gap renders as an informational bullet, no button |
+| Lab-order button | `LAB_PARTNER_NAME` and `LAB_TEST_ORDER_CODES` | Gap renders as an informational bullet, no button |
 
-Before enabling either in production, set the variable on one instance and
-confirm the log line reports the expected outcome. The LLM path in particular
-has never made a real API call, so model latency and the instance's egress rules
-are unmeasured.
+Before enabling it in production, set the variables on one instance and confirm
+the log line reports the expected outcome.
 
 ## Out of scope for v1
 

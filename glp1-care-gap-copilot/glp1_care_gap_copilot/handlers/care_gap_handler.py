@@ -18,7 +18,7 @@ from glp1_care_gap_copilot.cohort import evaluate_cohort
 from glp1_care_gap_copilot.config import Config
 from glp1_care_gap_copilot.dedupe import gaps_with_open_tasks
 from glp1_care_gap_copilot.gaps import detect_gaps, weeks_since_last_visit
-from glp1_care_gap_copilot.rationale import generate_rationale
+from glp1_care_gap_copilot.rationale import build_narrative
 
 
 class GLP1CareGapHandler(BaseHandler):
@@ -55,12 +55,7 @@ class GLP1CareGapHandler(BaseHandler):
         now = datetime.now(timezone.utc)
         gaps = detect_gaps(patient_id, config, now)
         suppressed = gaps_with_open_tasks(patient_id, config, [gap.key for gap in gaps])
-        narrative = generate_rationale(
-            gaps,
-            cohort.on_glp1_medication,
-            weeks_since_last_visit(patient_id, now),
-            config,
-        )
+        narrative = build_narrative(gaps, weeks_since_last_visit(patient_id, now))
 
         card = build_card(patient_id, gaps, suppressed, narrative, config)
         log.info(

@@ -23,9 +23,7 @@ from tests.factories import (
     days_ahead,
 )
 
-# The LLM path is exercised in test_rationale; here the templated fallback keeps
-# the handler tests deterministic and offline.
-SECRETS = {"ENABLE_LLM_RATIONALE": "false", "REQUIRED_LAB_NAMES": "lipid panel"}
+SECRETS = {"REQUIRED_LAB_NAMES": "lipid panel"}
 
 
 def build_handler(patient_id: str, secrets: dict[str, str] | None = None) -> GLP1CareGapHandler:
@@ -176,7 +174,6 @@ def test_malformed_secrets_do_not_prevent_a_card() -> None:
     patient = PatientFactory.create()
     add_medication(patient, "Semaglutide 0.5 MG")
     secrets = {
-        "ENABLE_LLM_RATIONALE": "false",
         "WEIGHT_CHECK_INTERVAL_DAYS": "not-a-number",
         "OUTREACH_TEAM_DBID": "the-weight-team",
     }

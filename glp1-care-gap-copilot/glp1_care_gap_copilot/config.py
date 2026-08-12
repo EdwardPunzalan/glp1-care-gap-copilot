@@ -11,7 +11,6 @@ from typing import Any
 
 from logger import log
 
-DEFAULT_LLM_MODEL = "claude-sonnet-5"
 DEFAULT_WEIGHT_CHECK_INTERVAL_DAYS = 30
 DEFAULT_LAB_INTERVAL_DAYS = 90
 DEFAULT_FOLLOWUP_HORIZON_DAYS = 90
@@ -62,12 +61,13 @@ EMPTY_LIST_SENTINEL = "none"
 # them. Redaction is keyed on the variable name rather than left to the choice
 # of parser, so a value declared sensitive in the manifest stays masked even if
 # it is later read through a parser that echoes malformed input.
-SENSITIVE_VARIABLES = frozenset({"ANTHROPIC_API_KEY"})
+#
+# Empty today — the only sensitive variable was the LLM API key, removed with
+# that feature. Kept wired up, and held to the manifest by a test, so marking a
+# future variable sensitive is safe by default rather than a leak waiting to
+# happen.
+SENSITIVE_VARIABLES: frozenset[str] = frozenset()
 REDACTED = "<redacted>"
-
-_TRUE_VALUES = frozenset({"true", "1", "yes", "y", "on"})
-_FALSE_VALUES = frozenset({"false", "0", "no", "n", "off"})
-
 
 def _loggable(key: str, raw: Any) -> str:
     """Render a variable's value for a log message, masking sensitive ones."""
@@ -113,19 +113,6 @@ def _optional_int(secrets: dict[str, Any], key: str) -> int | None:
         return None
 
 
-def _flag(secrets: dict[str, Any], key: str, default: bool) -> bool:
-    raw = secrets.get(key)
-    if raw is None or str(raw).strip() == "":
-        return default
-    if isinstance(raw, bool):
-        return raw
-    text = str(raw).strip().lower()
-    if text in _TRUE_VALUES:
-        return True
-    if text in _FALSE_VALUES:
-        return False
-    log.warning(f"[glp1-care-gap-copilot] {key}={_loggable(key, raw)} is not a boolean; using {default}")
-    return default
 
 
 def _csv(
@@ -164,9 +151,6 @@ def _csv(
 class Config:
     """Resolved plugin settings for a single card render."""
 
-    enable_llm_rationale: bool
-    anthropic_api_key: str
-    llm_model: str
     weight_check_interval_days: int
     lab_interval_days: int
     followup_horizon_days: int
@@ -184,9 +168,6 @@ class Config:
         """Build a config from plugin secrets, substituting defaults for bad input."""
         secrets = secrets or {}
         return cls(
-            enable_llm_rationale=_flag(secrets, "ENABLE_LLM_RATIONALE", True),
-            anthropic_api_key=_text(secrets, "ANTHROPIC_API_KEY"),
-            llm_model=_text(secrets, "LLM_MODEL", DEFAULT_LLM_MODEL),
             weight_check_interval_days=_positive_int(
                 secrets, "WEIGHT_CHECK_INTERVAL_DAYS", DEFAULT_WEIGHT_CHECK_INTERVAL_DAYS
             ),
@@ -218,7 +199,3 @@ class Config:
             lab_partner_name=_text(secrets, "LAB_PARTNER_NAME"),
             task_title_prefix=_text(secrets, "TASK_TITLE_PREFIX", DEFAULT_TASK_TITLE_PREFIX),
         )
-
-    def llm_available(self) -> bool:
-        """Whether the LLM rationale path is both enabled and configured."""
-        return self.enable_llm_rationale and bool(self.anthropic_api_key)

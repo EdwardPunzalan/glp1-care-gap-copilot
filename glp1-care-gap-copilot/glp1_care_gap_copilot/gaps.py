@@ -1,8 +1,8 @@
 """Deterministic care-gap detection.
 
 Every rule here is a threshold comparison against chart data. Nothing in this
-module calls an LLM and nothing writes to the chart — it answers "what is
-overdue, and by how long", and the answer is reproducible from the same inputs.
+module writes to the chart — it answers "what is overdue, and by how long", and
+the answer is reproducible from the same inputs.
 
 Query budget per render is fixed: one weight lookup, one lookup per configured
 required lab, one future-appointment existence check, one last-visit lookup,
@@ -34,8 +34,8 @@ WEIGHT_OBSERVATION_NAMES = ("weight", "bmi")
 class Gap:
     """One open care gap.
 
-    `detail` holds only derived scalars — day counts and lab names — and is the
-    sole thing handed to the LLM. It must never carry patient identifiers.
+    `detail` holds only derived scalars — day counts and lab names — which are
+    what the narrative sentence is assembled from.
     """
 
     key: str

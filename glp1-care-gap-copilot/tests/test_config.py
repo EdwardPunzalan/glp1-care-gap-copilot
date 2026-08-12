@@ -4,17 +4,17 @@ import json
 import logging
 import pathlib
 
+import glp1_care_gap_copilot.config as config_module
 from glp1_care_gap_copilot.config import (
     REDACTED,
     SENSITIVE_VARIABLES,
     DEFAULT_DIABETES_ONLY_LAB_NAMES,
     DEFAULT_GLP1_MED_NAME_FRAGMENTS,
     DEFAULT_REQUIRED_LAB_NAMES,
-    DEFAULT_LLM_MODEL,
     DEFAULT_TASK_TITLE_PREFIX,
     DEFAULT_WEIGHT_CHECK_INTERVAL_DAYS,
     Config,
-    _flag,
+    _positive_int,
     _loggable,
 )
 
@@ -26,7 +26,6 @@ def test_defaults_apply_when_no_secrets_are_set() -> None:
     assert config.lab_interval_days == 90
     assert config.followup_horizon_days == 90
     assert config.glp1_med_name_fragments == DEFAULT_GLP1_MED_NAME_FRAGMENTS
-    assert config.llm_model == DEFAULT_LLM_MODEL
     assert config.task_title_prefix == DEFAULT_TASK_TITLE_PREFIX
     assert config.outreach_team_dbid is None
     assert config.lab_partner_name == ""
@@ -132,37 +131,24 @@ def test_every_sensitive_manifest_variable_is_redacted_in_logs() -> None:
     )
 
 
-def test_sensitive_values_are_masked_in_log_output() -> None:
-    assert _loggable("ANTHROPIC_API_KEY", "sk-secret-value") == REDACTED
+def test_sensitive_values_are_masked_in_log_output(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # No variable is sensitive today, so exercise the mechanism directly: this is
+    # what protects the next sensitive variable someone adds.
+    monkeypatch.setattr(config_module, "SENSITIVE_VARIABLES", frozenset({"SOME_TOKEN"}))
+
+    assert _loggable("SOME_TOKEN", "shh-secret-value") == REDACTED
     # Non-sensitive values stay visible — an operator needs them to fix a typo.
     assert _loggable("LAB_INTERVAL_DAYS", "ninety") == "'ninety'"
 
 
-def test_a_malformed_sensitive_value_never_reaches_the_log(caplog) -> None:  # type: ignore[no-untyped-def]
-    # ANTHROPIC_API_KEY routes through _text() today, which never logs. Guard the
-    # case where a future sensitive variable is read through a logging parser.
-    with caplog.at_level(logging.WARNING):
-        _flag({"ANTHROPIC_API_KEY": "sk-live-do-not-log"}, "ANTHROPIC_API_KEY", True)
+def test_a_malformed_sensitive_value_never_reaches_the_log(monkeypatch, caplog) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(config_module, "SENSITIVE_VARIABLES", frozenset({"SOME_TOKEN"}))
 
-    assert "sk-live-do-not-log" not in caplog.text
+    with caplog.at_level(logging.WARNING):
+        _positive_int({"SOME_TOKEN": "shh-do-not-log"}, "SOME_TOKEN", 30)
+
+    assert "shh-do-not-log" not in caplog.text
     assert REDACTED in caplog.text
 
 
-def test_llm_kill_switch_accepts_common_spellings() -> None:
-    assert Config.from_secrets({"ENABLE_LLM_RATIONALE": "false"}).enable_llm_rationale is False
-    assert Config.from_secrets({"ENABLE_LLM_RATIONALE": "0"}).enable_llm_rationale is False
-    assert Config.from_secrets({"ENABLE_LLM_RATIONALE": "TRUE"}).enable_llm_rationale is True
-    assert Config.from_secrets({"ENABLE_LLM_RATIONALE": True}).enable_llm_rationale is True
-    # Unparseable values keep the documented default rather than silently disabling.
-    assert Config.from_secrets({"ENABLE_LLM_RATIONALE": "maybe"}).enable_llm_rationale is True
 
-
-def test_llm_is_unavailable_without_a_key() -> None:
-    assert Config.from_secrets({}).llm_available() is False
-    assert Config.from_secrets({"ANTHROPIC_API_KEY": "sk-test"}).llm_available() is True
-    assert (
-        Config.from_secrets(
-            {"ANTHROPIC_API_KEY": "sk-test", "ENABLE_LLM_RATIONALE": "false"}
-        ).llm_available()
-        is False
-    )
