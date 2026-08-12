@@ -37,15 +37,20 @@ LABS_GAP = Gap(
 )
 
 
-def configured_partner(
-    name: str = "Quest", order_name: str = "Hemoglobin A1c"
-) -> LabPartner:
-    """A lab partner offering a test whose name matches the missing lab."""
+def configured_partner(name: str = "Quest", order_code: str = "496") -> LabPartner:
+    """A lab partner offering a test under a specific order code."""
     partner = LabPartnerFactory.create(name=name, active=True)
     LabPartnerTestFactory.create(
-        lab_partner=partner, order_name=order_name, order_code="A1C-1"
+        lab_partner=partner, order_name="HEMOGLOBIN A1c", order_code=order_code
     )
     return partner
+
+
+# A configured partner plus a mapping from the missing lab name to its code.
+LAB_SECRETS = {
+    "LAB_PARTNER_NAME": "Quest",
+    "LAB_TEST_ORDER_CODES": "hemoglobin a1c:496",
+}
 
 
 # --- Card shape -------------------------------------------------------------
@@ -137,10 +142,10 @@ def test_suppressing_one_gap_leaves_the_others_actionable() -> None:
 # --- Lab order button -------------------------------------------------------
 
 
-def test_lab_order_button_appears_when_the_partner_and_test_resolve() -> None:
+def test_lab_order_button_appears_when_the_partner_and_code_resolve() -> None:
     PatientFactory.create()
     configured_partner()
-    config = Config.from_secrets({"LAB_PARTNER_NAME": "Quest"})
+    config = Config.from_secrets(LAB_SECRETS)
 
     card = build_card("patient-1", [LABS_GAP], set(), "n", config)
     recommendation = card.recommendations[0]
@@ -148,7 +153,53 @@ def test_lab_order_button_appears_when_the_partner_and_test_resolve() -> None:
     assert recommendation.button == LAB_ORDER_BUTTON
     order = recommendation.commands[0]
     assert isinstance(order, LabOrderCommand)
-    assert order.tests_order_codes == ["A1C-1"]
+    assert order.tests_order_codes == ["496"]
+
+
+def test_only_the_mapped_code_is_ordered_not_every_name_match() -> None:
+    """A catalog carries many variants of one panel; order exactly the mapped one."""
+    partner = LabPartnerFactory.create(name="Quest", active=True)
+    for order_name, code in [
+        ("HEMOGLOBIN A1c", "496"),
+        ("HEMOGLOBIN A1c WITH eAG", "16802"),
+        ("HEMOGLOBIN A1c (REFL)", "40073"),
+        ("CARDIO IQ(R) HEMOGLOBIN A1c", "91732"),
+    ]:
+        LabPartnerTestFactory.create(
+            lab_partner=partner, order_name=order_name, order_code=code
+        )
+    config = Config.from_secrets(LAB_SECRETS)
+
+    order = resolve_lab_order(LABS_GAP, config)
+
+    assert order is not None
+    assert order.tests_order_codes == ["496"]
+
+
+def test_no_code_map_means_no_button() -> None:
+    configured_partner()
+    config = Config.from_secrets({"LAB_PARTNER_NAME": "Quest"})
+
+    assert resolve_lab_order(LABS_GAP, config) is None
+
+
+def test_unmapped_lab_name_yields_no_button() -> None:
+    configured_partner()
+    config = Config.from_secrets(
+        {"LAB_PARTNER_NAME": "Quest", "LAB_TEST_ORDER_CODES": "lipid panel:7600"}
+    )
+
+    # The gap is missing hemoglobin a1c, which this map does not cover.
+    assert resolve_lab_order(LABS_GAP, config) is None
+
+
+def test_a_code_the_partner_does_not_offer_yields_no_button() -> None:
+    configured_partner(order_code="496")
+    config = Config.from_secrets(
+        {"LAB_PARTNER_NAME": "Quest", "LAB_TEST_ORDER_CODES": "hemoglobin a1c:99999"}
+    )
+
+    assert resolve_lab_order(LABS_GAP, config) is None
 
 
 def test_no_lab_partner_configured_renders_the_gap_without_a_button() -> None:
@@ -162,14 +213,7 @@ def test_no_lab_partner_configured_renders_the_gap_without_a_button() -> None:
 
 def test_unknown_lab_partner_renders_the_gap_without_a_button() -> None:
     configured_partner(name="Quest")
-    config = Config.from_secrets({"LAB_PARTNER_NAME": "LabCorp"})
-
-    assert resolve_lab_order(LABS_GAP, config) is None
-
-
-def test_partner_that_does_not_offer_the_test_renders_no_button() -> None:
-    configured_partner(name="Quest", order_name="Basic Metabolic Panel")
-    config = Config.from_secrets({"LAB_PARTNER_NAME": "Quest"})
+    config = Config.from_secrets({**LAB_SECRETS, "LAB_PARTNER_NAME": "LabCorp"})
 
     assert resolve_lab_order(LABS_GAP, config) is None
 
@@ -177,16 +221,16 @@ def test_partner_that_does_not_offer_the_test_renders_no_button() -> None:
 def test_inactive_partner_is_not_used() -> None:
     partner = LabPartnerFactory.create(name="Quest", active=False)
     LabPartnerTestFactory.create(
-        lab_partner=partner, order_name="Hemoglobin A1c", order_code="A1C-1"
+        lab_partner=partner, order_name="HEMOGLOBIN A1c", order_code="496"
     )
-    config = Config.from_secrets({"LAB_PARTNER_NAME": "Quest"})
+    config = Config.from_secrets(LAB_SECRETS)
 
     assert resolve_lab_order(LABS_GAP, config) is None
 
 
 def test_a_gap_with_no_missing_labs_produces_no_order() -> None:
     configured_partner()
-    config = Config.from_secrets({"LAB_PARTNER_NAME": "Quest"})
+    config = Config.from_secrets(LAB_SECRETS)
     empty = Gap(key=GAP_LABS_OVERDUE, label="Labs overdue", detail={"missing": []})
 
     assert resolve_lab_order(empty, config) is None
@@ -194,6 +238,8 @@ def test_a_gap_with_no_missing_labs_produces_no_order() -> None:
 
 def test_partner_lookup_is_case_insensitive() -> None:
     configured_partner(name="Quest Diagnostics")
-    config = Config.from_secrets({"LAB_PARTNER_NAME": "quest diagnostics"})
+    config = Config.from_secrets(
+        {**LAB_SECRETS, "LAB_PARTNER_NAME": "quest diagnostics"}
+    )
 
     assert resolve_lab_order(LABS_GAP, config) is not None

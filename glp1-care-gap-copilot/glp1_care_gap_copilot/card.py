@@ -6,12 +6,11 @@ configured, tests not offered by that partner), the gap still renders as an
 informational bullet: the plugin never emits a command it knows to be invalid.
 """
 
-from django.db.models import Q
-
 from canvas_sdk.commands import LabOrderCommand, TaskCommand
 from canvas_sdk.commands.commands.task import AssigneeType, TaskAssigner
 from canvas_sdk.effects.protocol_card import ProtocolCard, Recommendation
 from canvas_sdk.v1.data.lab import LabPartner, LabPartnerTest
+from logger import log
 
 from glp1_care_gap_copilot.config import Config
 from glp1_care_gap_copilot.dedupe import task_title
@@ -43,14 +42,30 @@ def build_outreach_task(gap: Gap, config: Config) -> TaskCommand:
 def resolve_lab_order(gap: Gap, config: Config) -> LabOrderCommand | None:
     """Build a lab order for the missing tests, or None if it cannot be validated.
 
-    `LabOrderCommand` validates `lab_partner` and `tests_order_codes` against the
-    instance's records, so both are resolved here first. Anything unresolvable
-    yields None and the caller renders the gap without a button.
+    Which test to order is taken from the operator-configured
+    `LAB_TEST_ORDER_CODES` map — one exact order code per lab name — and each
+    code is then confirmed to exist in the partner's catalog before it is used.
+
+    Matching by name was tried first and is wrong: a real catalog carries many
+    near-identical variants (XPC Lab lists 8 "comprehensive metabolic panel"
+    entries and no plain "lipid panel" at all), so a name match either ordered
+    every variant at once or found nothing. Picking among them is a clinical and
+    contractual decision, so the plugin requires it to be stated rather than
+    inferred. Anything unmapped or unrecognized yields None, and the caller
+    renders the gap without a button.
     """
-    if not config.lab_partner_name:
+    if not config.lab_partner_name or not config.lab_test_order_codes:
         return None
     missing = gap.detail.get("missing")
     if not isinstance(missing, list) or not missing:
+        return None
+
+    requested = [
+        code
+        for code in (config.lab_test_order_codes.get(name.lower()) for name in missing)
+        if code
+    ]
+    if not requested:
         return None
 
     partner = LabPartner.objects.filter(
@@ -59,17 +74,19 @@ def resolve_lab_order(gap: Gap, config: Config) -> LabOrderCommand | None:
     if partner is None:
         return None
 
-    name_query = Q()
-    for lab_name in missing:
-        name_query |= Q(order_name__icontains=lab_name)
-    order_codes = [
-        code
-        for code in LabPartnerTest.objects.filter(name_query, lab_partner=partner)
-        .values_list("order_code", flat=True)
-        .distinct()
-        if code
-    ]
+    # Confirm each configured code is actually offered by this partner, so a
+    # stale mapping degrades to "no button" instead of a command Canvas rejects.
+    known = set(
+        LabPartnerTest.objects.filter(
+            lab_partner=partner, order_code__in=requested
+        ).values_list("order_code", flat=True)
+    )
+    order_codes = [code for code in requested if code in known]
     if not order_codes:
+        log.warning(
+            f"[glp1-care-gap-copilot] none of the configured order codes {requested} "
+            f"are offered by lab partner {config.lab_partner_name!r}; no order button"
+        )
         return None
 
     return LabOrderCommand(

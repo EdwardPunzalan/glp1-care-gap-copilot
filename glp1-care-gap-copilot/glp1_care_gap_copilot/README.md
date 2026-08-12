@@ -59,11 +59,29 @@ so it is kept explicit, auditable, and testable.
 | **Outreach task** | Stages a `TaskCommand` titled with the gap key | Uncommitted; clinician reviews and signs |
 | **Order labs** | Stages a `LabOrderCommand` with the missing tests | Uncommitted; clinician reviews and signs |
 
-`LabOrderCommand` validates its lab partner and test codes against the instance's
-`LabPartner` / `LabPartnerTest` records, so the plugin resolves both at runtime
-first. **If resolution fails, the gap still renders as an informational bullet
-with no button** — the plugin never emits a command it knows to be invalid. The
-same applies when `LAB_PARTNER_NAME` is unset.
+### Which lab test gets ordered
+
+**You state it; the plugin never guesses.** `LAB_TEST_ORDER_CODES` maps each
+expected lab name to one exact order code:
+
+```
+hemoglobin a1c:496, comprehensive metabolic panel:10231, lipid panel:7600
+```
+
+Matching by name was tried first and does not work against a real catalog. On
+`xpc-dev`, XPC Lab lists **8** tests containing "comprehensive metabolic panel"
+and **no** test named plain "lipid panel" — so a name match either ordered every
+variant at once or found nothing at all. Choosing between `LIPID PANEL, STANDARD`
+and `LIPID PANEL, CARDIO IQ(R)` is a clinical and contractual decision for the
+practice, so it has to be stated.
+
+Find the codes in Admin › Health Gorilla › Lab tests, filtered by your lab.
+
+Each configured code is re-checked against the partner's catalog at render time,
+so a stale mapping degrades to "no button" rather than a command Canvas rejects.
+**If anything fails to resolve — no partner, no mapping, unknown code — the gap
+still renders as an informational bullet with no button.** The plugin never emits
+a command it knows to be invalid.
 
 If `OUTREACH_TEAM_DBID` is unset, outreach tasks are staged unassigned rather
 than losing the button.
@@ -117,7 +135,8 @@ empty cohort or lab list would silently disable detection.
 | `DIABETES_ONLY_LAB_NAMES` | `hemoglobin a1c` | Labs expected only with a diabetes diagnosis. Set to the literal `none` to make every configured lab unconditional — see below |
 | `DIABETES_ICD10_PREFIXES` | `E11` | Diagnosis prefixes gating the above |
 | `OUTREACH_TEAM_DBID` | — | Default task assignee (Team `dbid`) |
-| `LAB_PARTNER_NAME` | — | Lab partner for order commands |
+| `LAB_PARTNER_NAME` | — | Lab partner name for order commands (must be active) |
+| `LAB_TEST_ORDER_CODES` | — | `lab name:order code` pairs; no button for unmapped labs |
 | `TASK_TITLE_PREFIX` | `GLP-1 Copilot` | Dedupe marker |
 
 ## Performance
@@ -153,7 +172,7 @@ The plugin makes no network calls at all.
 ## Development
 
 ```bash
-uv run pytest                 # 102 tests
+uv run pytest                 # 108 tests
 uv run pytest --cov=glp1_care_gap_copilot --cov-report=term-missing
 uv run mypy glp1_care_gap_copilot tests
 uv run canvas validate glp1_care_gap_copilot   # run before every deploy

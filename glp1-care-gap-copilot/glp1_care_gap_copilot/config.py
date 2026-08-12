@@ -53,6 +53,13 @@ DEFAULT_DIABETES_ONLY_LAB_NAMES = ("hemoglobin a1c",)
 DEFAULT_DIABETES_ICD10_PREFIXES = ("E11",)
 DEFAULT_TASK_TITLE_PREFIX = "GLP-1 Copilot"
 
+# Maps an expected lab name to the exact lab-partner order code to order for it.
+# Deliberately empty by default and never inferred: a partner catalog carries
+# many near-identical variants of the same panel (XPC Lab lists 8 comprehensive
+# metabolic panels), and choosing between them is a clinical and contractual
+# decision for the practice, not something this plugin should guess.
+DEFAULT_LAB_TEST_ORDER_CODES: dict[str, str] = {}
+
 # Sentinel a deployment sets to mean "no entries" on a clearable list, since a
 # blank value is indistinguishable from an unconfigured one.
 EMPTY_LIST_SENTINEL = "none"
@@ -115,6 +122,32 @@ def _optional_int(secrets: dict[str, Any], key: str) -> int | None:
 
 
 
+def _code_map(secrets: dict[str, Any], key: str) -> dict[str, str]:
+    """Parse a `lab name:order code` map, e.g. `hemoglobin a1c:496, lipid panel:7600`.
+
+    Entries that are malformed or missing a side are dropped with a warning
+    rather than guessed at — an unmapped lab simply gets no order button.
+    """
+    raw = secrets.get(key)
+    if raw is None or str(raw).strip() == "":
+        return dict(DEFAULT_LAB_TEST_ORDER_CODES)
+    mapping: dict[str, str] = {}
+    for entry in str(raw).split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        name, separator, code = entry.rpartition(":")
+        name, code = name.strip().lower(), code.strip()
+        if not separator or not name or not code:
+            log.warning(
+                f"[glp1-care-gap-copilot] {key} entry {entry!r} is not "
+                "'lab name:order code'; ignoring it"
+            )
+            continue
+        mapping[name] = code
+    return mapping
+
+
 def _csv(
     secrets: dict[str, Any],
     key: str,
@@ -161,6 +194,7 @@ class Config:
     diabetes_icd10_prefixes: tuple[str, ...]
     outreach_team_dbid: int | None
     lab_partner_name: str
+    lab_test_order_codes: dict[str, str]
     task_title_prefix: str
 
     @classmethod
@@ -197,5 +231,6 @@ class Config:
             ),
             outreach_team_dbid=_optional_int(secrets, "OUTREACH_TEAM_DBID"),
             lab_partner_name=_text(secrets, "LAB_PARTNER_NAME"),
+            lab_test_order_codes=_code_map(secrets, "LAB_TEST_ORDER_CODES"),
             task_title_prefix=_text(secrets, "TASK_TITLE_PREFIX", DEFAULT_TASK_TITLE_PREFIX),
         )

@@ -113,6 +113,33 @@ def test_sentinel_is_not_honored_on_non_clearable_lists() -> None:
     assert config.glp1_med_name_fragments == ("none",)
 
 
+def test_lab_test_order_codes_parses_a_map() -> None:
+    config = Config.from_secrets(
+        {"LAB_TEST_ORDER_CODES": "Hemoglobin A1c:496, comprehensive metabolic panel:10231"}
+    )
+
+    # Names are lowercased so lookup matches the configured lab names.
+    assert config.lab_test_order_codes == {
+        "hemoglobin a1c": "496",
+        "comprehensive metabolic panel": "10231",
+    }
+
+
+def test_lab_test_order_codes_defaults_to_empty() -> None:
+    assert Config.from_secrets({}).lab_test_order_codes == {}
+    assert Config.from_secrets({"LAB_TEST_ORDER_CODES": ""}).lab_test_order_codes == {}
+
+
+def test_malformed_code_map_entries_are_dropped_not_guessed() -> None:
+    config = Config.from_secrets(
+        {"LAB_TEST_ORDER_CODES": "lipid panel:7600,, no-colon-here, :991, trailing:"}
+    )
+
+    # Only the well-formed entry survives — an empty slot from a stray comma,
+    # a missing separator, and a missing side are all dropped rather than guessed.
+    assert config.lab_test_order_codes == {"lipid panel": "7600"}
+
+
 def test_every_sensitive_manifest_variable_is_redacted_in_logs() -> None:
     """Redaction must track the manifest, not the parser a variable happens to use."""
     manifest = json.loads(
