@@ -168,6 +168,30 @@ without complaint — `collections.abc` and the name `object` are both unavailab
 for instance. Only `canvas validate` loads the handlers in that sandbox, so it is
 the only local check that catches this class of failure.
 
+## Verification status
+
+Verified live on a Canvas instance (`xpc-dev`), against a real patient:
+
+- Cohort matching on a brand-name prescription (Ozempic)
+- All three gap rules firing, with A1c correctly excluded for a non-diabetic patient
+- Card rendering with the templated narrative
+- Labs gap rendering **without** a button when no lab partner is configured
+- The outreach button staging an uncommitted `TaskCommand` carrying the dedupe marker
+
+Two paths are **configuration-gated and have not been exercised against live
+third-party services**. Both are covered by unit tests, and both degrade to a
+verified fallback when unconfigured — which is how they currently run:
+
+| Path | Requires | Unconfigured behavior (verified) |
+|---|---|---|
+| LLM narrative | `ANTHROPIC_API_KEY` | Deterministic templated sentence |
+| Lab-order button | `LAB_PARTNER_NAME` resolving to an active `LabPartner` offering the configured tests | Gap renders as an informational bullet, no button |
+
+Before enabling either in production, set the variable on one instance and
+confirm the log line reports the expected outcome. The LLM path in particular
+has never made a real API call, so model latency and the instance's egress rules
+are unmeasured.
+
 ## Out of scope for v1
 
 Writing to the chart without a click; patient-facing outreach; dose-titration or
