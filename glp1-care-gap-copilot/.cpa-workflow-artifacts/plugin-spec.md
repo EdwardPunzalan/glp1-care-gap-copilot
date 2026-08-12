@@ -280,3 +280,52 @@ team stages the task unassigned rather than dropping the button.
 
 104 tests, 100% statement coverage, clean under `mypy` with the project's strict settings, and
 `canvas validate-manifest` passes.
+
+---
+
+## Post-1.0.0 changes (2026-08-12)
+
+Two parts of this specification were superseded after the first release. **Where
+this document and the README disagree, the README describes what ships.**
+
+### §9 — the LLM narrative was removed entirely (1.1.0)
+
+The spec's §9 describes an `LlmAnthropic` call with a PHI-minimal payload and a
+templated fallback. **The model path no longer exists.** It billed per render on
+a path that fires for every chart open, and the fallback it degraded to was
+already the sentence clinicians saw in practice, since no API key was ever set.
+
+The narrative is now always that deterministic sentence. This also removed the
+plugin's only network I/O and its only transmission to a third party, so nothing
+patient-derived leaves the instance. `ANTHROPIC_API_KEY`, `LLM_MODEL`, and
+`ENABLE_LLM_RATIONALE` are gone from the manifest — 12 variables remain, none
+sensitive.
+
+### §8 — lab ordering now requires explicit order codes (1.2.0)
+
+The spec assumed the plugin could resolve which lab test to order by matching
+`REQUIRED_LAB_NAMES` against the partner's catalog. **Against a real catalog that
+does not work, in both directions.** On `xpc-dev`, XPC Lab lists **8** tests
+containing "comprehensive metabolic panel" and **no** test named plain "lipid
+panel" — so name matching either bundled every variant into one order or found
+nothing at all.
+
+`LAB_TEST_ORDER_CODES` now maps each expected lab to exactly one order code,
+chosen by the operator:
+
+```
+hemoglobin a1c:496, comprehensive metabolic panel:10231, lipid panel:7600
+```
+
+This follows the same principle as §7's lab *relevance* decision: choosing
+between `LIPID PANEL, STANDARD` and `LIPID PANEL, CARDIO IQ(R)` is a clinical
+and contractual call for the practice, not something the plugin should infer.
+Each code is re-validated against the partner catalog at render time, so a stale
+mapping degrades to no button rather than an invalid command.
+
+### Final delivered state (1.2.0)
+
+108 tests, 100% statement **and branch** coverage, clean under strict `mypy`,
+handler loads in the RestrictedPython sandbox, and every behavior above verified
+against real chart data on `xpc-dev` — including duplicate suppression and lab
+ordering staging exactly the two mapped tests.
