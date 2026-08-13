@@ -1,0 +1,24 @@
+{% include "templates/_weight_trend_chart.html" %}
+
+<script>
+  // Report our height so the section sizes to the graph instead of scrolling
+  // inside its own frame. The full-size view is reached from the "Weight trend"
+  // action button in the patient header: section content is sandboxed page
+  // markup and cannot return an effect, so the modal cannot be launched here.
+  (function () {
+    var port = null;
+    function report() {
+      if (!port) return;
+      port.postMessage({ type: 'RESIZE', height: document.body.offsetHeight });
+    }
+    window.addEventListener('message', function (event) {
+      if (event.data && event.data.type === 'INIT_CHANNEL' && event.ports && event.ports[0]) {
+        port = event.ports[0];
+        report();
+      }
+    });
+    if (window.ResizeObserver) {
+      new ResizeObserver(report).observe(document.body);
+    }
+  })();
+</script>

@@ -72,18 +72,39 @@ def add_condition(
 
 
 def add_observation(
-    patient: Patient, name: str, effective_datetime: datetime, value: str = "200"
-) -> None:
+    patient: Patient,
+    name: str,
+    effective_datetime: datetime,
+    value: str = "200",
+    units: str = "lbs",
+    **kwargs: Any,
+) -> Observation:
     """Record an observation such as a weight or BMI."""
-    Observation.objects.create(
-        patient=patient,
-        name=name,
-        value=value,
-        units="lbs",
-        category="vital-signs",
-        deleted=False,
-        note_id=0,
-        effective_datetime=effective_datetime,
+    fields: dict[str, Any] = {
+        "patient": patient,
+        "name": name,
+        "value": value,
+        "units": units,
+        "category": "vital-signs",
+        "deleted": False,
+        "note_id": 0,
+        "effective_datetime": effective_datetime,
+    }
+    fields.update(kwargs)
+    return Observation.objects.create(**fields)
+
+
+def add_weight(
+    patient: Patient, pounds: float, effective_datetime: datetime, **kwargs: Any
+) -> Observation:
+    """Record a weight the way Canvas stores it — in ounces."""
+    return add_observation(
+        patient,
+        "weight",
+        effective_datetime,
+        value=str(int(round(pounds * 16))),
+        units="oz",
+        **kwargs,
     )
 
 

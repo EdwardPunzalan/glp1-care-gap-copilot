@@ -1,13 +1,25 @@
 {
     "sdk_version": "0.1.4",
-    "plugin_version": "1.2.0",
+    "plugin_version": "1.5.0",
     "name": "glp1_care_gap_copilot",
-    "description": "Surfaces GLP-1 monitoring care gaps (stale weight, overdue labs, missing follow-up) as a protocol card with one-click, clinician-reviewed actions.",
+    "description": "Surfaces GLP-1 monitoring care gaps (stale weight, overdue labs, missing follow-up) as a protocol card with one-click, clinician-reviewed actions, plus a chart summary weight-trend graph that flags rapid weight loss.",
     "components": {
         "handlers": [
             {
                 "class": "glp1_care_gap_copilot.handlers.care_gap_handler:GLP1CareGapHandler",
                 "description": "Computes GLP-1 care gaps when a note or patient chart is opened and upserts a protocol card."
+            },
+            {
+                "class": "glp1_care_gap_copilot.handlers.weight_trend_handler:GLP1WeightTrendSection",
+                "description": "Serves the weight-trend graph into its custom patient chart summary section."
+            },
+            {
+                "class": "glp1_care_gap_copilot.handlers.weight_trend_handler:GLP1ChartSummaryConfiguration",
+                "description": "Declares the patient chart summary layout so the weight-trend section appears."
+            },
+            {
+                "class": "glp1_care_gap_copilot.handlers.weight_trend_handler:GLP1WeightTrendButton",
+                "description": "Patient-header button that opens the weight-trend graph full size in a modal."
             }
         ],
         "commands": [],
@@ -51,6 +63,15 @@
         },
         {
             "name": "TASK_TITLE_PREFIX"
+        },
+        {
+            "name": "WEIGHT_TREND_POINTS"
+        },
+        {
+            "name": "WEIGHT_DROP_ALERT_LB"
+        },
+        {
+            "name": "WEIGHT_DROP_MAX_INTERVAL_DAYS"
         }
     ],
     "tags": {},

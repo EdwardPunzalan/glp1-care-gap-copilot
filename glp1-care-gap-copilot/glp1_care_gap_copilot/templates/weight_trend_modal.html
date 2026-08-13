@@ -1,0 +1,16 @@
+{% include "templates/_weight_trend_chart.html" %}
+
+<script>
+  // The modal is a leaf: no expand button, nothing to fetch. It still joins the
+  // message channel so Canvas can size the overlay to the chart.
+  (function () {
+    window.addEventListener('message', function (event) {
+      if (event.data && event.data.type === 'INIT_CHANNEL' && event.ports && event.ports[0]) {
+        event.ports[0].postMessage({
+          type: 'RESIZE',
+          height: document.body.offsetHeight
+        });
+      }
+    });
+  })();
+</script>

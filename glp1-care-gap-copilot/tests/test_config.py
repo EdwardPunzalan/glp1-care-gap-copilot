@@ -179,3 +179,55 @@ def test_a_malformed_sensitive_value_never_reaches_the_log(monkeypatch, caplog) 
 
 
 
+
+
+def test_weight_trend_settings_have_documented_defaults() -> None:
+    config = Config.from_secrets({})
+
+    assert config.weight_trend_points == 6
+    assert config.weight_drop_alert_lb == 10.0
+
+
+def test_weight_trend_settings_are_configurable() -> None:
+    config = Config.from_secrets(
+        {"WEIGHT_TREND_POINTS": "10", "WEIGHT_DROP_ALERT_LB": "7.5"}
+    )
+
+    assert config.weight_trend_points == 10
+    assert config.weight_drop_alert_lb == 7.5
+
+
+def test_a_non_numeric_drop_threshold_falls_back_to_the_default(caplog) -> None:  # type: ignore[no-untyped-def]
+    with caplog.at_level(logging.WARNING):
+        config = Config.from_secrets({"WEIGHT_DROP_ALERT_LB": "ten pounds"})
+
+    assert config.weight_drop_alert_lb == 10.0
+    assert "is not a number" in caplog.text
+
+
+def test_a_non_positive_drop_threshold_falls_back_to_the_default(caplog) -> None:  # type: ignore[no-untyped-def]
+    # Zero would flag every interval, including a patient who gained.
+    with caplog.at_level(logging.WARNING):
+        config = Config.from_secrets({"WEIGHT_DROP_ALERT_LB": "0"})
+
+    assert config.weight_drop_alert_lb == 10.0
+    assert "must be positive" in caplog.text
+
+
+def test_the_drop_window_defaults_to_a_week() -> None:
+    # GLP-1s are dosed weekly, so a week is the natural comparison window.
+    assert Config.from_secrets({}).weight_drop_max_interval_days == 7.0
+
+
+def test_the_drop_window_is_configurable() -> None:
+    config = Config.from_secrets({"WEIGHT_DROP_MAX_INTERVAL_DAYS": "14"})
+
+    assert config.weight_drop_max_interval_days == 14.0
+
+
+def test_a_malformed_drop_window_falls_back_to_the_default(caplog) -> None:  # type: ignore[no-untyped-def]
+    with caplog.at_level(logging.WARNING):
+        config = Config.from_secrets({"WEIGHT_DROP_MAX_INTERVAL_DAYS": "weekly"})
+
+    assert config.weight_drop_max_interval_days == 7.0
+    assert "is not a number" in caplog.text

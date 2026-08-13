@@ -53,6 +53,20 @@ DEFAULT_DIABETES_ONLY_LAB_NAMES = ("hemoglobin a1c",)
 DEFAULT_DIABETES_ICD10_PREFIXES = ("E11",)
 DEFAULT_TASK_TITLE_PREFIX = "GLP-1 Copilot"
 
+# Weigh-ins plotted on the chart summary trend graph. Six covers roughly six
+# months of monthly weights — enough to read a trajectory without shrinking the
+# points into noise on a narrow chart summary column.
+DEFAULT_WEIGHT_TREND_POINTS = 6
+# Pounds lost between two consecutive weigh-ins before the interval is flagged.
+# Only losses count: rapid *loss* is the GLP-1 safety signal.
+DEFAULT_WEIGHT_DROP_ALERT_LB = 10.0
+# How close together those two weigh-ins must be for the loss to count as
+# *rapid*. GLP-1s are dosed weekly, so a week is the natural unit: 14 lb between
+# consecutive weekly weights is alarming, the same 14 lb across ten weeks is the
+# drug working. Raise this if a practice weighs patients on a looser schedule —
+# at 7 a pair 8 days apart is silently ignored.
+DEFAULT_WEIGHT_DROP_MAX_INTERVAL_DAYS = 7.0
+
 # Maps an expected lab name to the exact lab-partner order code to order for it.
 # Deliberately empty by default and never inferred: a partner catalog carries
 # many near-identical variants of the same panel (XPC Lab lists 8 comprehensive
@@ -100,6 +114,24 @@ def _positive_int(secrets: dict[str, Any], key: str, default: int) -> int:
     except (TypeError, ValueError):
         log.warning(
             f"[glp1-care-gap-copilot] {key}={_loggable(key, raw)} is not an integer; "
+            f"using {default}"
+        )
+        return default
+    if value <= 0:
+        log.warning(f"[glp1-care-gap-copilot] {key}={value} must be positive; using {default}")
+        return default
+    return value
+
+
+def _positive_float(secrets: dict[str, Any], key: str, default: float) -> float:
+    raw = secrets.get(key)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        log.warning(
+            f"[glp1-care-gap-copilot] {key}={_loggable(key, raw)} is not a number; "
             f"using {default}"
         )
         return default
@@ -196,6 +228,9 @@ class Config:
     lab_partner_name: str
     lab_test_order_codes: dict[str, str]
     task_title_prefix: str
+    weight_trend_points: int
+    weight_drop_alert_lb: float
+    weight_drop_max_interval_days: float
 
     @classmethod
     def from_secrets(cls, secrets: dict[str, Any] | None) -> "Config":
@@ -233,4 +268,15 @@ class Config:
             lab_partner_name=_text(secrets, "LAB_PARTNER_NAME"),
             lab_test_order_codes=_code_map(secrets, "LAB_TEST_ORDER_CODES"),
             task_title_prefix=_text(secrets, "TASK_TITLE_PREFIX", DEFAULT_TASK_TITLE_PREFIX),
+            weight_trend_points=_positive_int(
+                secrets, "WEIGHT_TREND_POINTS", DEFAULT_WEIGHT_TREND_POINTS
+            ),
+            weight_drop_alert_lb=_positive_float(
+                secrets, "WEIGHT_DROP_ALERT_LB", DEFAULT_WEIGHT_DROP_ALERT_LB
+            ),
+            weight_drop_max_interval_days=_positive_float(
+                secrets,
+                "WEIGHT_DROP_MAX_INTERVAL_DAYS",
+                DEFAULT_WEIGHT_DROP_MAX_INTERVAL_DAYS,
+            ),
         )

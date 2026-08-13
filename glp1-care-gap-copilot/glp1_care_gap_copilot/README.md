@@ -1,7 +1,8 @@
 # GLP-1 Care Gap Copilot
 
 Surfaces GLP-1 monitoring care gaps in one protocol card when a clinician opens a
-patient's chart or note, with one-click shortcuts to act on them.
+patient's chart or note, with one-click shortcuts to act on them — plus a chart
+summary section graphing recent weigh-ins and flagging rapid weight loss.
 
 ## What it is — and is not
 
@@ -16,12 +17,16 @@ restates detected facts; it makes no clinical decisions.
 
 ## When it runs
 
-| Event | Fires when |
-|---|---|
-| `NOTE_OPENED` | A provider expands a note in the patient chart |
-| `PATIENT_CHART__MEDICATIONS` | Medications load on the patient chart |
+| Event | Handler | Fires when |
+|---|---|---|
+| `NOTE_OPENED` | Care gap card | A provider expands a note in the patient chart |
+| `PATIENT_CHART__MEDICATIONS` | Care gap card | Medications load on the patient chart |
+| `PATIENT_CHART_SUMMARY__SECTION_CONFIGURATION` | Summary layout | The chart summary decides which sections to show |
+| `PATIENT_CHART_SUMMARY__GET_CUSTOM_SECTION` | Weight trend | The chart summary requests our section's content |
+| `SHOW_CHART_PATIENT_HEADER_BUTTON` | Weight trend button | The patient header decides which buttons to show |
+| `ACTION_BUTTON_CLICKED` | Weight trend button | The "Weight trend" button is clicked |
 
-Both events target the Patient. Neither is on Canvas's
+The first two events target the Patient. Neither is on Canvas's
 [disallowed list](https://docs.canvasmedical.com/sdk/effects/) for
 `ADD_OR_UPDATE_PROTOCOL_CARD`, so the card cannot trigger a render loop. The card
 is keyed per patient and upserts, so reopening the chart refreshes it rather than
@@ -110,6 +115,103 @@ practice. Removing it also removed the plugin's only network I/O and its only
 transmission of anything to a third party, so no patient-derived data leaves the
 instance at all.
 
+## Weight trend section
+
+A custom chart summary section plots the patient's most recent weigh-ins as a
+line graph and shades intervals of **rapid** weight loss in bright red.
+
+### The flagging rule
+
+An interval is flagged only when **both** conditions hold:
+
+| Condition | Default | Variable |
+|---|---|---|
+| More than N pounds lost | 10 lb | `WEIGHT_DROP_ALERT_LB` |
+| ...within N days | 7 days | `WEIGHT_DROP_MAX_INTERVAL_DAYS` |
+
+**The interval test is what makes the flag mean "rapid."** These patients dose
+weekly, so losing 14 lb between consecutive weekly weigh-ins is a safety signal,
+while losing the same 14 lb across ten weeks is the medication working as
+intended. Without the second condition the graph would light up red on every
+successful course of treatment and clinicians would learn to ignore it.
+
+Verified live on two patients with identical 14 lb drops:
+
+| Patient | Drop | Interval | Flagged |
+|---|---|---|---|
+| `Zzdemo Glp1Care` | 14 lb | 14 days | No |
+| `Zzdemo Rapidloss` | 14 lb | 7 days | **Yes** |
+
+Only **losses** are flagged — a gain of the same size is left unmarked.
+
+**Intervals are measured in whole days.** Two weigh-ins a clinician would call
+"a week apart" are never exactly 168.000 hours apart, so comparing the raw
+elapsed time against a 7-day window would flag or spare them depending on what
+time of day the patient stepped on the scale.
+
+Three more details worth knowing:
+
+- **The storage unit varies, so the units column is always consulted.** The SDK
+  documents weight as ounces (`weight_oz` on the vitals command), and the SDK's
+  own growth-chart example converts `obs.value` from ounces without reading the
+  units column. That is not universally true: weights posted through the FHIR
+  API on `xpc-dev` are normalized and come back in **pounds**. Trusting the
+  documented unit would have plotted a 229 lb patient at 3,664 lb. Recognized
+  units (`oz`, `lb`, `kg`, `g` and their variants) are converted; an
+  unrecognized unit **drops that reading with a warning** rather than plotting a
+  guess, because a confidently wrong weight is worse than a gap in the line. A
+  blank unit falls back to ounces.
+- **The graph reads `weight` only, never `bmi`.** The stale-weight *gap*
+  deliberately accepts a BMI observation as evidence that someone weighed the
+  patient; the graph must not, or a BMI of 32 lands on a pound-scaled axis.
+- **The x axis is scaled by elapsed time, not by reading index.** Evenly spacing
+  the points would draw an identical slope for 14 lb lost over three weeks and
+  14 lb lost over eight months, which is the exact distinction the graph exists
+  to make visible.
+
+Out-of-scope patients get a one-line explanation instead of a graph, so an empty
+section never looks like a broken one.
+
+### Seeing it full size
+
+A **Weight trend** button in the patient header opens the same graph in a modal,
+rendered from the same template at a larger size. The button hides itself for
+patients with no graph to enlarge.
+
+**Why the button is in the header and not in the section's corner.** It was
+built there first and it cannot work. Section content is sandboxed page markup:
+it cannot return an effect when something inside it is clicked, and Canvas
+defines no `ButtonLocation` for custom summary sections, so a native button
+cannot be placed inside one either. The documented escape hatch — have the
+iframe `fetch()` a SimpleAPI endpoint that returns the effect — was implemented
+and **verified not to work for modals**: the request authenticated, reached the
+endpoint, built the right graph and returned `200`, but Canvas's frontend never
+opened the modal. Every `LaunchModalEffect` in the SDK documentation is returned
+from an `ActionButton.handle()` or an `Application.on_open()`, and that is the
+path this uses.
+
+Dropping the endpoint also removed the plugin's only HTTP surface, so it still
+has no API, no authentication code, and no patient identifier in any URL.
+
+### Chart summary layout — read before deploying
+
+Registering a custom section requires a second handler
+(`GLP1ChartSummaryConfiguration`) that answers
+`PATIENT_CHART_SUMMARY__SECTION_CONFIGURATION`. That effect **replaces the entire
+chart summary layout**, so `BUILT_IN_SECTIONS` restates every section Canvas
+ships and a test asserts the list stays complete against
+`PatientChartSummaryConfiguration.Section`. Listing a subset would silently
+delete the rest of the chart summary for every patient on the instance.
+
+**Only one plugin can win this event.** If another installed plugin also returns
+a layout, the result is last-writer-wins and one of the two configurations is
+discarded — which can make another plugin's custom section disappear, or ours.
+Before enabling on a shared instance, check the logs for a second responder:
+
+```bash
+uv run canvas logs --host <instance> | grep SECTION_CONFIGURATION
+```
+
 ## Configuration
 
 All values are parsed defensively — a malformed value logs a warning and falls
@@ -138,6 +240,9 @@ empty cohort or lab list would silently disable detection.
 | `LAB_PARTNER_NAME` | — | Lab partner name for order commands (must be active) |
 | `LAB_TEST_ORDER_CODES` | — | `lab name:order code` pairs; no button for unmapped labs |
 | `TASK_TITLE_PREFIX` | `GLP-1 Copilot` | Dedupe marker |
+| `WEIGHT_TREND_POINTS` | `6` | Weigh-ins plotted on the trend graph |
+| `WEIGHT_DROP_ALERT_LB` | `10` | Pounds lost between consecutive weigh-ins before the interval is flagged red |
+| `WEIGHT_DROP_MAX_INTERVAL_DAYS` | `7` | How close together those weigh-ins must be for the loss to count as rapid. At `7`, a pair 8 days apart is ignored — raise it if the practice weighs on a looser schedule |
 
 ## Performance
 
@@ -149,6 +254,12 @@ what matters. Measured against a real database:
 | Out of scope (most patients) | **2** |
 | In scope, sparse chart | **9** |
 | In scope, 39 observations + 39 appointments + 20 lab reports | **9** |
+| Weight trend section, out of scope | **2** |
+| Weight trend section, in scope | **3** |
+
+The trend section adds a cohort check plus one windowed read of the weigh-ins.
+Its cost is bounded by `WEIGHT_TREND_POINTS`, not by how often the patient has
+been weighed — a patient with 40 recorded weights costs the same as one with 1.
 
 Query count is **flat with respect to chart size**, and
 `tests/test_query_budget.py` asserts it so a per-row query fails CI rather than
@@ -172,7 +283,7 @@ The plugin makes no network calls at all.
 ## Development
 
 ```bash
-uv run pytest                 # 108 tests
+uv run pytest                 # 183 tests
 uv run pytest --cov=glp1_care_gap_copilot --cov-report=term-missing
 uv run mypy glp1_care_gap_copilot tests
 uv run canvas validate glp1_care_gap_copilot   # run before every deploy

@@ -1,0 +1,122 @@
+<!-- Shared weight-trend chart, rendered at two sizes.
+
+     Included by both the chart summary section and the full-screen modal so the
+     graph has exactly one definition. The SVG is viewBox-based and sized by its
+     container, so "bigger" is a CSS width change rather than a second chart. -->
+<style>
+  html, body { overflow: hidden; margin: 0; padding: 0; }
+  .wt {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1f2933;
+    padding: 10px 12px 12px;
+    box-sizing: border-box;
+  }
+  .wt-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .wt-head-text { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .wt-latest { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .wt-net { font-size: 12px; color: #52606d; font-variant-numeric: tabular-nums; }
+  .wt-alert {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: #FFE8E6;
+    border-left: 4px solid #FF1F1F;
+    color: #A3120C;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    padding: 7px 9px;
+    border-radius: 3px;
+    margin-bottom: 9px;
+  }
+  .wt-alert-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: #FF1F1F; }
+  .wt-svg { display: block; width: 100%; height: auto; }
+  .wt-grid { stroke: #E4E7EB; stroke-width: 1; }
+  .wt-axis-label { fill: #7B8794; font-size: 9px; font-variant-numeric: tabular-nums; }
+  .wt-date-label { fill: #7B8794; font-size: 9px; }
+  .wt-line { fill: none; stroke: #3E7BFA; stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+  .wt-drop-band { fill: #FF1F1F; fill-opacity: 0.13; }
+  .wt-drop-line { fill: none; stroke: #FF1F1F; stroke-width: 4.5; stroke-linecap: round; }
+  .wt-drop-label { fill: #E01111; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .wt-dot { fill: #ffffff; stroke: #3E7BFA; stroke-width: 2; }
+  .wt-value-label { fill: #1f2933; font-size: 9.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .wt-empty { font-size: 12.5px; color: #52606d; line-height: 1.45; }
+
+  /* Full-screen modal: same chart, more room. The SVG scales with its box, so
+     widening the container enlarges the plot and every label with it. */
+  .wt-modal { max-width: 1100px; margin: 0 auto; padding: 20px 24px 28px; }
+  .wt-modal .wt-latest { font-size: 22px; }
+  .wt-modal .wt-net { font-size: 14px; }
+  .wt-modal .wt-alert { font-size: 15px; padding: 11px 14px; margin-bottom: 16px; }
+  .wt-modal .wt-alert-dot { width: 11px; height: 11px; }
+  .wt-modal .wt-head { margin-bottom: 14px; }
+</style>
+
+<div class="wt {% if modal %}wt-modal{% endif %}">
+  {% if graph.has_data %}
+    <div class="wt-head">
+      <div class="wt-head-text">
+        <span class="wt-latest">{{ graph.latest_label }}</span>
+        <span class="wt-net">{{ graph.net_label }}</span>
+      </div>
+    </div>
+
+    {% if graph.flagged_count %}
+      <div class="wt-alert">
+        <span class="wt-alert-dot"></span>
+        <span>
+          {% if graph.flagged_count == 1 %}
+            Rapid weight loss: more than {{ threshold_label }} lb lost within {{ interval_label }} days.
+          {% else %}
+            Rapid weight loss: {{ graph.flagged_count }} intervals losing more than {{ threshold_label }} lb within {{ interval_label }} days.
+          {% endif %}
+        </span>
+      </div>
+    {% endif %}
+
+    <svg class="wt-svg" viewBox="0 0 400 200" preserveAspectRatio="xMidYMid meet"
+         role="img" aria-label="Weight trend across the last {{ graph.points|length }} weigh-ins">
+      {% for y, label in graph.axis_labels %}
+        <line class="wt-grid" x1="46" y1="{{ y|floatformat:2 }}" x2="384" y2="{{ y|floatformat:2 }}"></line>
+        <text class="wt-axis-label" x="40" y="{{ y|floatformat:2 }}" text-anchor="end" dominant-baseline="middle">{{ label }}</text>
+      {% endfor %}
+
+      {% for segment in graph.segments %}
+        {% if segment.flagged %}
+          <rect class="wt-drop-band"
+                x="{{ segment.band_x|floatformat:2 }}" y="18"
+                width="{{ segment.band_width|floatformat:2 }}" height="148"></rect>
+        {% endif %}
+      {% endfor %}
+
+      {% if graph.has_line %}
+        <polyline class="wt-line" points="{{ graph.polyline }}"></polyline>
+      {% endif %}
+
+      {% for segment in graph.segments %}
+        {% if segment.flagged %}
+          <line class="wt-drop-line"
+                x1="{{ segment.x1|floatformat:2 }}" y1="{{ segment.y1|floatformat:2 }}"
+                x2="{{ segment.x2|floatformat:2 }}" y2="{{ segment.y2|floatformat:2 }}"></line>
+          <text class="wt-drop-label" x="{{ segment.label_x|floatformat:2 }}" y="{{ segment.label_y|floatformat:2 }}"
+                text-anchor="middle">{{ segment.drop_label }}</text>
+        {% endif %}
+      {% endfor %}
+
+      {% for point in graph.points %}
+        <text class="wt-value-label" x="{{ point.x|floatformat:2 }}" y="{{ point.y|floatformat:2 }}"
+              dy="-9" text-anchor="middle">{{ point.weight_label }}</text>
+        <circle class="wt-dot" cx="{{ point.x|floatformat:2 }}" cy="{{ point.y|floatformat:2 }}" r="3.75"></circle>
+        <text class="wt-date-label" x="{{ point.x|floatformat:2 }}" y="182" text-anchor="middle">{{ point.date_label }}</text>
+      {% endfor %}
+    </svg>
+  {% else %}
+    <p class="wt-empty">{{ empty_message }}</p>
+  {% endif %}
+</div>
