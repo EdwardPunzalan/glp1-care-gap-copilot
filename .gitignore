@@ -1,0 +1,14 @@
+# Per-plugin ignores live in each plugin directory (e.g.
+# glp1-care-gap-copilot/.gitignore). This file covers only the junk that
+# accumulates at the repository root.
+
+# macOS Finder metadata (matches at any depth)
+.DS_Store
+
+# Editor and IDE local state
+.idea/
+.vscode/
+*.swp
+
+# Claude Code local settings
+.claude/
