@@ -149,7 +149,7 @@ def test_a_rapid_drop_renders_the_red_highlight_and_a_warning() -> None:
     assert '<line class="wt-drop-line"' in html
     assert "-14 lb in 7d" in html
     assert "Rapid weight loss" in html
-    assert "more than 10 lb lost within 7 days" in html
+    assert "more than 5 lb lost within 7 days" in html
 
 
 def test_a_gradual_loss_renders_no_highlight_at_all() -> None:
@@ -228,7 +228,7 @@ def test_fractional_thresholds_render_without_a_trailing_zero() -> None:
 
     html = render_for(str(patient.id), {"WEIGHT_DROP_ALERT_LB": "6.5"})
 
-    # "6.5 lb", not "6.5000000 lb" — and a whole number stays "10", not "10.0".
+    # "6.5 lb", not "6.5000000 lb" — and a whole number stays "5", not "5.0".
     assert "more than 6.5 lb lost within 7 days" in html
 
 

@@ -11,7 +11,7 @@ from glp1_care_gap_copilot.graph import (
 )
 from glp1_care_gap_copilot.weight_trend import WeighIn
 
-THRESHOLD = 10.0
+THRESHOLD = 5.0
 INTERVAL = 7.0
 START = datetime(2026, 3, 1, tzinfo=timezone.utc)
 
@@ -83,16 +83,16 @@ def test_the_window_boundary_itself_counts() -> None:
 
 def test_a_small_loss_over_one_week_is_not_flagged() -> None:
     # Fast but not large: fails the other half of the rule.
-    graph = build_graph(series((0, 252.0), (7, 246.0)), THRESHOLD, INTERVAL)
+    graph = build_graph(series((0, 252.0), (7, 249.0)), THRESHOLD, INTERVAL)
 
     assert graph.flagged_count == 0
 
 
 def test_drop_exactly_at_the_pound_threshold_is_not_flagged() -> None:
-    # The rule is "more than 10 lb", so 10.0 itself stays quiet.
-    graph = build_graph(series((0, 250.0), (7, 240.0)), THRESHOLD, INTERVAL)
+    # The rule is "more than 5 lb", so 5.0 itself stays quiet.
+    graph = build_graph(series((0, 250.0), (7, 245.0)), THRESHOLD, INTERVAL)
 
-    assert graph.segments[0].drop == 10.0
+    assert graph.segments[0].drop == 5.0
     assert graph.flagged_count == 0
 
 
@@ -116,13 +116,13 @@ def test_each_qualifying_interval_is_flagged_independently() -> None:
 
 
 def test_both_halves_of_the_rule_are_configurable() -> None:
-    readings = series((0, 250.0), (14, 244.0))
+    readings = series((0, 250.0), (14, 247.0))
 
     assert build_graph(readings, THRESHOLD, INTERVAL).flagged_count == 0
     # Lowering the pounds alone is still not enough — the gap is 14 days.
-    assert build_graph(readings, 5.0, INTERVAL).flagged_count == 0
+    assert build_graph(readings, 2.0, INTERVAL).flagged_count == 0
     # Widening the window as well finally trips it.
-    assert build_graph(readings, 5.0, 14.0).flagged_count == 1
+    assert build_graph(readings, 2.0, 14.0).flagged_count == 1
 
 
 def test_same_day_readings_are_inside_any_window() -> None:

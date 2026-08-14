@@ -126,7 +126,7 @@ An interval is flagged only when **both** conditions hold:
 
 | Condition | Default | Variable |
 |---|---|---|
-| More than N pounds lost | 10 lb | `WEIGHT_DROP_ALERT_LB` |
+| More than N pounds lost | 5 lb | `WEIGHT_DROP_ALERT_LB` |
 | ...within N days | 7 days | `WEIGHT_DROP_MAX_INTERVAL_DAYS` |
 
 **The interval test is what makes the flag mean "rapid."** These patients dose
@@ -241,7 +241,7 @@ empty cohort or lab list would silently disable detection.
 | `LAB_TEST_ORDER_CODES` | — | `lab name:order code` pairs; no button for unmapped labs |
 | `TASK_TITLE_PREFIX` | `GLP-1 Copilot` | Dedupe marker |
 | `WEIGHT_TREND_POINTS` | `6` | Weigh-ins plotted on the trend graph |
-| `WEIGHT_DROP_ALERT_LB` | `10` | Pounds lost between consecutive weigh-ins before the interval is flagged red |
+| `WEIGHT_DROP_ALERT_LB` | `5` | Pounds lost between consecutive weigh-ins before the interval is flagged red |
 | `WEIGHT_DROP_MAX_INTERVAL_DAYS` | `7` | How close together those weigh-ins must be for the loss to count as rapid. At `7`, a pair 8 days apart is ignored — raise it if the practice weighs on a looser schedule |
 
 ## Performance

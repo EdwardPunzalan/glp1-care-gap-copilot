@@ -58,8 +58,11 @@ DEFAULT_TASK_TITLE_PREFIX = "GLP-1 Copilot"
 # points into noise on a narrow chart summary column.
 DEFAULT_WEIGHT_TREND_POINTS = 6
 # Pounds lost between two consecutive weigh-ins before the interval is flagged.
-# Only losses count: rapid *loss* is the GLP-1 safety signal.
-DEFAULT_WEIGHT_DROP_ALERT_LB = 10.0
+# Only losses count: rapid *loss* is the GLP-1 safety signal. Five pounds inside
+# a single dosing week is roughly 1-2% of body weight for a typical patient on
+# these drugs, which is the point at which the loss is outpacing the guideline
+# rate rather than tracking it.
+DEFAULT_WEIGHT_DROP_ALERT_LB = 5.0
 # How close together those two weigh-ins must be for the loss to count as
 # *rapid*. GLP-1s are dosed weekly, so a week is the natural unit: 14 lb between
 # consecutive weekly weights is alarming, the same 14 lb across ten weeks is the
