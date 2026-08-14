@@ -36,6 +36,9 @@ def _describe(gap: Gap) -> str:
     if gap.key == GAP_LABS_OVERDUE:
         missing = gap.detail.get("missing")
         names = ", ".join(missing) if isinstance(missing, list) else "expected labs"
+        interval = gap.detail.get("interval_days")
+        if isinstance(interval, int):
+            return f"{names} not resulted in the last {interval} days"
         return f"{names} not resulted within the monitoring interval"
     if gap.key == GAP_NO_FOLLOWUP:
         horizon = gap.detail.get("horizon_days")

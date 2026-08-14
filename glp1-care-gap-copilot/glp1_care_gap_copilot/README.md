@@ -49,7 +49,7 @@ Out-of-scope patients produce **no card at all**, not an empty one.
 |---|---|---|
 | **Safety review** | Rapid weight loss **and** a clinical warning sign | see below |
 | Stale weight | No weight or BMI observation within N days | 30 days |
-| Labs overdue | An expected lab has no result within N days | 90 days |
+| Monitoring labs due | A required lab has no result within the patient's interval | see below |
 | No follow-up | No future non-cancelled appointment within N days | 90 days |
 
 The safety review is not an overdue-monitoring gap like the other three — it is
@@ -58,11 +58,74 @@ the card, gets a **Contact patient** button instead of the usual outreach one,
 and additionally raises a red chart banner. See
 [Rapid loss with warning signs](#rapid-loss-with-warning-signs).
 
-**Which labs are expected is decided by explicit rule.** Labs listed in
-`DIABETES_ONLY_LAB_NAMES` apply only to patients carrying a matching diagnosis
-(`DIABETES_ICD10_PREFIXES`); everything else in `REQUIRED_LAB_NAMES` always
-applies. Choosing which labs a patient clinically needs is a clinical decision,
-so it is kept explicit, auditable, and testable.
+**Which labs are expected is decided by explicit rule**, not inferred. See
+[Monitoring labs](#monitoring-labs).
+
+## Monitoring labs
+
+Three gates decide what a patient owes. All must pass.
+
+### 1. Time on therapy
+
+Nothing is expected until the patient has been on a GLP-1 for
+`GLP1_MIN_DAYS_FOR_LABS` (default **90 days**). Drawing a metabolic panel three
+weeks in measures the diet the patient was on *before* the drug.
+
+Time on therapy is read from the **earliest** start date among the patient's
+active GLP-1 medications. A patient switched from semaglutide to tirzepatide has
+been on GLP-1 therapy continuously — restarting the clock at the switch would
+excuse them from labs they are already overdue for.
+
+**A patient who is in scope but not on a GLP-1 is asked for no labs.** There is
+no therapy to monitor. This is a deliberate narrowing from earlier versions,
+which asked for labs from anyone in the cohort.
+
+### 2. Which labs
+
+| Lab | Who | Satisfied by |
+|---|---|---|
+| Metabolic panel | everyone past the gate | a **CMP or a BMP** — either counts |
+| Lipid panel | everyone past the gate | lipid panel |
+| Hemoglobin A1c | everyone past the gate | hemoglobin A1c, HbA1c |
+| **TSH with reflex to T4** | **only patients with a thyroid diagnosis** | TSH, thyroid stimulating hormone, thyrotropin |
+
+Each requirement is evaluated independently, so a patient with a current lipid
+panel and a stale A1c is asked only for the A1c.
+
+TSH is thyroid-only by explicit clinical decision — adding it for everyone would
+order a test most of these patients have no indication for. Clearing
+`HYPOTHYROID_ICD10_PREFIXES` with the `none` sentinel switches it off entirely.
+
+### 3. How often — the two tiers
+
+| Patient | Interval | Variable |
+|---|---|---|
+| Carries a metabolic comorbidity | **90 days** | `LAB_INTERVAL_DAYS` |
+| Obesity, and none of those | **365 days** | `LAB_INTERVAL_OBESITY_ONLY_DAYS` |
+
+A comorbidity is any of:
+
+| Comorbidity | Default ICD-10 | Variable |
+|---|---|---|
+| High cholesterol | `E78` | `HIGH_CHOLESTEROL_ICD10_PREFIXES` |
+| Diabetes | `E11`, `E10` | `DIABETES_ICD10_PREFIXES` |
+| Pre-diabetes | `R73` | `PREDIABETES_ICD10_PREFIXES` |
+| Hypothyroidism | `E03`, `E02`, `E89.0` | `HYPOTHYROID_ICD10_PREFIXES` |
+
+**The two tiers are the point of the design.** Obesity alone is a slower
+clinical picture than obesity plus dysglycemia. Putting both on a 90-day cycle
+would bury the patients who need watching under the ones who don't, and the card
+would be ignored.
+
+All four groups are clearable with the `none` sentinel, so a practice that does
+not want (say) pre-diabetes pulling patients onto the short interval can say so.
+
+### Ordering
+
+`LAB_TEST_ORDER_CODES` is keyed by **requirement key**, not by display label:
+`metabolic panel`, `lipid panel`, `hemoglobin a1c`, `tsh`. One code per
+requirement. Unmapped requirements render as an informational row with no button
+rather than a lab order the partner would reject.
 
 ## Actions
 
@@ -74,10 +137,10 @@ so it is kept explicit, auditable, and testable.
 ### Which lab test gets ordered
 
 **You state it; the plugin never guesses.** `LAB_TEST_ORDER_CODES` maps each
-expected lab name to one exact order code:
+requirement key to one exact order code:
 
 ```
-hemoglobin a1c:496, comprehensive metabolic panel:10231, lipid panel:7600
+metabolic panel:10231, lipid panel:7600, hemoglobin a1c:496, tsh:8998
 ```
 
 Matching by name was tried first and does not work against a real catalog. On
@@ -298,24 +361,27 @@ back to its default rather than breaking the card.
 manifest but never configured reaches the plugin as an empty string, which is
 indistinguishable from one an operator cleared on purpose. Blank therefore
 always means the default. To genuinely empty a list, set it to the literal
-`none` — currently supported only on `DIABETES_ONLY_LAB_NAMES`, the one list
-where an empty value is meaningful (it makes every configured lab apply to every
-patient). On the other lists `none` is treated as an ordinary entry, because an
-empty cohort or lab list would silently disable detection.
+`none` — supported on the four comorbidity prefix lists, where an empty value is
+meaningful (it stops that diagnosis pulling patients onto the short interval, and
+on the thyroid list it switches TSH off). On the cohort lists `none` is treated
+as an ordinary entry, because an empty cohort would silently disable the plugin.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `WEIGHT_CHECK_INTERVAL_DAYS` | `30` | Stale-weight threshold |
-| `LAB_INTERVAL_DAYS` | `90` | Lab recency threshold |
+| `LAB_INTERVAL_DAYS` | `90` | Lab interval for a patient with a metabolic comorbidity |
+| `LAB_INTERVAL_OBESITY_ONLY_DAYS` | `365` | Lab interval for a patient whose only qualifying diagnosis is obesity |
+| `GLP1_MIN_DAYS_FOR_LABS` | `90` | Time on GLP-1 therapy before any lab is expected |
 | `FOLLOWUP_HORIZON_DAYS` | `90` | Follow-up window |
 | `GLP1_MED_NAME_FRAGMENTS` | `semaglutide,tirzepatide,liraglutide,dulaglutide,exenatide` | Cohort meds |
 | `OBESITY_ICD10_PREFIXES` | `E66,Z68.4` | Cohort conditions |
-| `REQUIRED_LAB_NAMES` | `hemoglobin a1c,comprehensive metabolic panel,lipid panel` | Expected labs |
-| `DIABETES_ONLY_LAB_NAMES` | `hemoglobin a1c` | Labs expected only with a diabetes diagnosis. Set to the literal `none` to make every configured lab unconditional — see below |
-| `DIABETES_ICD10_PREFIXES` | `E11` | Diagnosis prefixes gating the above |
+| `DIABETES_ICD10_PREFIXES` | `E11,E10` | Diabetes; clearable with `none` |
+| `HIGH_CHOLESTEROL_ICD10_PREFIXES` | `E78` | High cholesterol; clearable with `none` |
+| `PREDIABETES_ICD10_PREFIXES` | `R73` | Pre-diabetes; clearable with `none` |
+| `HYPOTHYROID_ICD10_PREFIXES` | `E03,E02,E89.0` | Hypothyroidism; also gates TSH. Clearable with `none` |
 | `OUTREACH_TEAM_DBID` | — | Default task assignee (Team `dbid`) |
 | `LAB_PARTNER_NAME` | — | Lab partner name for order commands (must be active) |
-| `LAB_TEST_ORDER_CODES` | — | `lab name:order code` pairs; no button for unmapped labs |
+| `LAB_TEST_ORDER_CODES` | — | `requirement key:order code` pairs (`metabolic panel`, `lipid panel`, `hemoglobin a1c`, `tsh`); no button for unmapped labs |
 | `TASK_TITLE_PREFIX` | `GLP-1 Copilot` | Dedupe marker |
 | `WEIGHT_TREND_POINTS` | `6` | Weigh-ins plotted on the trend graph |
 | `WEIGHT_DROP_ALERT_LB` | `5` | Pounds lost between consecutive weigh-ins before the interval is flagged red |
@@ -349,13 +415,12 @@ No model instances are hydrated anywhere: reads are `.exists()` for booleans and
 `.values_list(...).first()` for single scalars, with relations crossed inside the
 query predicate rather than in Python. The plugin performs **no database writes**.
 
-**One scaling caveat.** The labs check issues one query per entry in
-`REQUIRED_LAB_NAMES`. This is bounded by configuration rather than by patient
-data, and at the default of 3 it is negligible. Configuring a large number of
-labs (say 30) would issue that many queries per render on a hot path — at that
-point it would be worth matching lab names in Python against a single fetch
-instead. See the DB performance review in `.cpa-workflow-artifacts/` for the
-reasoning behind the current shape.
+**One scaling note.** The labs check issues one query per required lab — three,
+or four for a thyroid patient — plus a single OR-ed comorbidity lookup covering
+all four diagnosis groups. The count is fixed by the rule rather than by chart
+size or configuration, and patients below the time-on-therapy gate skip all of
+it. See the DB performance review in `.cpa-workflow-artifacts/` for the reasoning
+behind the current shape.
 
 The plugin makes no network calls at all.
 

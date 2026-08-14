@@ -32,8 +32,14 @@ WEIGHT_GAP = Gap(
 )
 LABS_GAP = Gap(
     key=GAP_LABS_OVERDUE,
-    label="Labs overdue: hemoglobin a1c",
-    detail={"missing": ["hemoglobin a1c"], "days_since_last": 214},
+    label="Monitoring labs due: hemoglobin A1c",
+    detail={
+        "missing": ["hemoglobin A1c"],
+        # Order codes are mapped by requirement key, not by the display label.
+        "missing_keys": ["hemoglobin a1c"],
+        "days_since_last": 214,
+        "interval_days": 90,
+    },
 )
 
 

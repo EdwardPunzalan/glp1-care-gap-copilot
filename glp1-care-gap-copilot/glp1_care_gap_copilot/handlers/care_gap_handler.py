@@ -62,7 +62,7 @@ class GLP1CareGapHandler(BaseHandler):
 
         now = datetime.now(timezone.utc)
         signal = evaluate_safety(patient_id, config)
-        gaps = detect_gaps(patient_id, config, now)
+        gaps = detect_gaps(patient_id, config, now, cohort)
         if signal.triggered:
             # Front of the card: a safety signal outranks every monitoring gap.
             gaps = [safety_gap(signal), *gaps]

@@ -12,7 +12,6 @@ from typing import Any
 from logger import log
 
 DEFAULT_WEIGHT_CHECK_INTERVAL_DAYS = 30
-DEFAULT_LAB_INTERVAL_DAYS = 90
 DEFAULT_FOLLOWUP_HORIZON_DAYS = 90
 # Both generic and brand names, because Canvas stores the *brand* in the
 # medication coding display ("Ozempic 4 mg tablet") — a generics-only list
@@ -41,16 +40,31 @@ DEFAULT_GLP1_MED_NAME_FRAGMENTS = (
     "bydureon",
 )
 DEFAULT_OBESITY_ICD10_PREFIXES = ("E66", "Z68.4")
-DEFAULT_REQUIRED_LAB_NAMES = (
-    "hemoglobin a1c",
-    "comprehensive metabolic panel",
-    "lipid panel",
-)
-# Labs in this set are only expected when the patient carries a matching
-# diagnosis. Which labs a patient needs is a clinical decision, so the rule is
-# explicit, configurable, and testable rather than delegated to the LLM.
-DEFAULT_DIABETES_ONLY_LAB_NAMES = ("hemoglobin a1c",)
-DEFAULT_DIABETES_ICD10_PREFIXES = ("E11",)
+
+# The metabolic comorbidities that put a patient on the short lab interval.
+# Which labs a patient needs is a clinical decision, so each group is explicit,
+# configurable, and testable rather than inferred.
+# E78 covers hypercholesterolemia, hyperlipidemia, and mixed dyslipidemia.
+DEFAULT_HIGH_CHOLESTEROL_ICD10_PREFIXES = ("E78",)
+# Both types: a type 1 patient on a GLP-1 needs the same monitoring.
+DEFAULT_DIABETES_ICD10_PREFIXES = ("E11", "E10")
+# R73.03 is prediabetes proper; R73.01/R73.09/R73.9 are the impaired-glucose
+# and hyperglycemia codes that get used for the same picture in practice.
+DEFAULT_PREDIABETES_ICD10_PREFIXES = ("R73",)
+# E03 is acquired hypothyroidism, E02 subclinical iodine-deficiency, E89.0
+# post-procedural. Presence of any adds TSH with reflex to T4.
+DEFAULT_HYPOTHYROID_ICD10_PREFIXES = ("E03", "E02", "E89.0")
+
+# How long a patient must have been on a GLP-1 before any lab is expected.
+# Drawing a metabolic panel three weeks in measures the diet they were on
+# before the drug, not the drug.
+DEFAULT_GLP1_MIN_DAYS_FOR_LABS = 90
+# How long a result stays current for a patient with a metabolic comorbidity.
+DEFAULT_LAB_INTERVAL_DAYS = 90
+# ...and for a patient whose only qualifying diagnosis is obesity. Obesity
+# alone is a slower clinical picture; putting both tiers on 90 days would bury
+# the patients who need watching under the ones who do not.
+DEFAULT_LAB_INTERVAL_OBESITY_ONLY_DAYS = 365
 DEFAULT_TASK_TITLE_PREFIX = "GLP-1 Copilot"
 
 # Weigh-ins plotted on the chart summary trend graph. Six covers roughly six
@@ -235,8 +249,11 @@ class Config:
     followup_horizon_days: int
     glp1_med_name_fragments: tuple[str, ...]
     obesity_icd10_prefixes: tuple[str, ...]
-    required_lab_names: tuple[str, ...]
-    diabetes_only_lab_names: tuple[str, ...]
+    high_cholesterol_icd10_prefixes: tuple[str, ...]
+    prediabetes_icd10_prefixes: tuple[str, ...]
+    hypothyroid_icd10_prefixes: tuple[str, ...]
+    glp1_min_days_for_labs: int
+    lab_interval_obesity_only_days: int
     diabetes_icd10_prefixes: tuple[str, ...]
     outreach_team_dbid: int | None
     lab_partner_name: str
@@ -268,17 +285,42 @@ class Config:
             obesity_icd10_prefixes=_csv(
                 secrets, "OBESITY_ICD10_PREFIXES", DEFAULT_OBESITY_ICD10_PREFIXES
             ),
-            required_lab_names=_csv(
-                secrets, "REQUIRED_LAB_NAMES", DEFAULT_REQUIRED_LAB_NAMES
-            ),
-            diabetes_only_lab_names=_csv(
+            # Every comorbidity group is clearable with the `none` sentinel: a
+            # practice that does not want, say, pre-diabetes to pull patients
+            # onto the short interval needs a way to say so, and blank cannot
+            # mean "cleared" — it is indistinguishable from never-configured.
+            diabetes_icd10_prefixes=_csv(
                 secrets,
-                "DIABETES_ONLY_LAB_NAMES",
-                DEFAULT_DIABETES_ONLY_LAB_NAMES,
+                "DIABETES_ICD10_PREFIXES",
+                DEFAULT_DIABETES_ICD10_PREFIXES,
                 clearable=True,
             ),
-            diabetes_icd10_prefixes=_csv(
-                secrets, "DIABETES_ICD10_PREFIXES", DEFAULT_DIABETES_ICD10_PREFIXES
+            high_cholesterol_icd10_prefixes=_csv(
+                secrets,
+                "HIGH_CHOLESTEROL_ICD10_PREFIXES",
+                DEFAULT_HIGH_CHOLESTEROL_ICD10_PREFIXES,
+                clearable=True,
+            ),
+            prediabetes_icd10_prefixes=_csv(
+                secrets,
+                "PREDIABETES_ICD10_PREFIXES",
+                DEFAULT_PREDIABETES_ICD10_PREFIXES,
+                clearable=True,
+            ),
+            # Cleared, this switches TSH off entirely.
+            hypothyroid_icd10_prefixes=_csv(
+                secrets,
+                "HYPOTHYROID_ICD10_PREFIXES",
+                DEFAULT_HYPOTHYROID_ICD10_PREFIXES,
+                clearable=True,
+            ),
+            glp1_min_days_for_labs=_positive_int(
+                secrets, "GLP1_MIN_DAYS_FOR_LABS", DEFAULT_GLP1_MIN_DAYS_FOR_LABS
+            ),
+            lab_interval_obesity_only_days=_positive_int(
+                secrets,
+                "LAB_INTERVAL_OBESITY_ONLY_DAYS",
+                DEFAULT_LAB_INTERVAL_OBESITY_ONLY_DAYS,
             ),
             outreach_team_dbid=_optional_int(secrets, "OUTREACH_TEAM_DBID"),
             lab_partner_name=_text(secrets, "LAB_PARTNER_NAME"),

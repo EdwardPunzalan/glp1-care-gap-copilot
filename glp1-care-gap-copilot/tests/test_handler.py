@@ -31,7 +31,7 @@ from tests.factories import (
     days_ahead,
 )
 
-SECRETS = {"REQUIRED_LAB_NAMES": "lipid panel"}
+SECRETS: dict[str, str] = {}
 
 
 def build_handler(patient_id: str, secrets: dict[str, str] | None = None) -> GLP1CareGapHandler:
@@ -91,7 +91,8 @@ def test_glp1_patient_with_gaps_gets_a_due_card() -> None:
 
 def test_card_lists_every_open_gap_with_an_action() -> None:
     patient = PatientFactory.create()
-    add_medication(patient, "Tirzepatide 5 MG")
+    # Past the time-on-therapy gate, so the lab rule actually applies.
+    add_medication(patient, "Tirzepatide 5 MG", start_date=days_ago(120))
 
     effects = build_handler(str(patient.id)).compute()
     recommendations = payload_of(effects[0])["data"]["recommendations"]
@@ -107,13 +108,12 @@ def test_fully_monitored_patient_gets_a_satisfied_card() -> None:
     add_medication(patient, "Semaglutide 0.5 MG")
     add_observation(patient, "weight", days_ago(3))
     add_appointment(patient, days_ahead(20))
-    secrets = {**SECRETS, "REQUIRED_LAB_NAMES": "hemoglobin a1c"}
 
-    effects = build_handler(str(patient.id), secrets).compute()
+    effects = build_handler(str(patient.id), SECRETS).compute()
     payload = payload_of(effects[0])
 
-    # A1c is diabetes-conditional and this patient has no diabetes diagnosis,
-    # so no lab gap applies and every rule is satisfied.
+    # Started on therapy today, so the lab rule has not engaged yet and every
+    # other rule is satisfied.
     assert payload["data"]["status"] == "satisfied"
     assert payload["data"]["recommendations"] == []
 

@@ -5,6 +5,7 @@ an obesity-related diagnosis costs two cheap `.exists()` queries and no card.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import cast
 
 from django.db.models import Q
@@ -21,11 +22,22 @@ class CohortMatch:
 
     on_glp1_medication: bool
     has_obesity_condition: bool
+    #: When the patient's longest-running active GLP-1 was started. The lab
+    #: rule gates on time-on-therapy, and carrying the date here means the
+    #: cohort query answers both questions instead of two queries answering one
+    #: each.
+    glp1_start: datetime | None = None
 
     @property
     def in_scope(self) -> bool:
         """True when either cohort criterion matched."""
         return self.on_glp1_medication or self.has_obesity_condition
+
+    def days_on_glp1(self, now: datetime) -> int | None:
+        """Whole days since the GLP-1 was started, or None if not on one."""
+        if self.glp1_start is None:
+            return None
+        return max((now - self.glp1_start).days, 0)
 
 
 def _icd10_prefix_query(prefixes: tuple[str, ...]) -> Q | None:
@@ -66,8 +78,14 @@ def has_active_condition_with_prefixes(patient_id: str, prefixes: tuple[str, ...
     )
 
 
-def has_active_glp1_medication(patient_id: str, fragments: tuple[str, ...]) -> bool:
-    """Whether the patient has an active medication whose name matches a fragment."""
+def earliest_glp1_start(patient_id: str, fragments: tuple[str, ...]) -> datetime | None:
+    """When the patient's longest-running active GLP-1 was started.
+
+    Returns the *earliest* start among matching active medications: a patient
+    switched from semaglutide to tirzepatide has been on GLP-1 therapy
+    continuously, and restarting their monitoring clock at the switch would
+    excuse them from labs they are already overdue for.
+    """
     query = Q()
     matched = False
     for fragment in fragments:
@@ -77,22 +95,33 @@ def has_active_glp1_medication(patient_id: str, fragments: tuple[str, ...]) -> b
         query |= Q(codings__display__icontains=cleaned)
         matched = True
     if not matched:
-        return False
+        return None
     return cast(
-        bool,
+        "datetime | None",
         Medication.objects.for_patient(patient_id)
         .filter(status=Status.ACTIVE, deleted=False, entered_in_error__isnull=True)
         .filter(query)
-        .exists(),
+        .order_by("start_date")
+        .values_list("start_date", flat=True)
+        .first(),
     )
+
+
+def has_active_glp1_medication(patient_id: str, fragments: tuple[str, ...]) -> bool:
+    """Whether the patient has an active medication whose name matches a fragment."""
+    return earliest_glp1_start(patient_id, fragments) is not None
 
 
 def evaluate_cohort(patient_id: str, config: Config) -> CohortMatch:
     """Decide whether the patient is in scope, and on which criterion."""
-    on_glp1 = has_active_glp1_medication(patient_id, config.glp1_med_name_fragments)
-    if on_glp1:
+    glp1_start = earliest_glp1_start(patient_id, config.glp1_med_name_fragments)
+    if glp1_start is not None:
         # Short-circuit: the medication match alone puts the patient in scope,
         # so skip the condition query entirely.
-        return CohortMatch(on_glp1_medication=True, has_obesity_condition=False)
+        return CohortMatch(
+            on_glp1_medication=True,
+            has_obesity_condition=False,
+            glp1_start=glp1_start,
+        )
     has_obesity = has_active_condition_with_prefixes(patient_id, config.obesity_icd10_prefixes)
     return CohortMatch(on_glp1_medication=False, has_obesity_condition=has_obesity)

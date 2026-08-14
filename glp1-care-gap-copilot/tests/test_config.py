@@ -8,9 +8,8 @@ import glp1_care_gap_copilot.config as config_module
 from glp1_care_gap_copilot.config import (
     REDACTED,
     SENSITIVE_VARIABLES,
-    DEFAULT_DIABETES_ONLY_LAB_NAMES,
     DEFAULT_GLP1_MED_NAME_FRAGMENTS,
-    DEFAULT_REQUIRED_LAB_NAMES,
+    DEFAULT_HYPOTHYROID_ICD10_PREFIXES,
     DEFAULT_TASK_TITLE_PREFIX,
     DEFAULT_WEIGHT_CHECK_INTERVAL_DAYS,
     Config,
@@ -89,21 +88,20 @@ def test_blank_declared_variable_uses_defaults_quietly() -> None:
         {
             "GLP1_MED_NAME_FRAGMENTS": "",
             "OBESITY_ICD10_PREFIXES": "",
-            "REQUIRED_LAB_NAMES": "",
-            "DIABETES_ONLY_LAB_NAMES": "",
+            "HYPOTHYROID_ICD10_PREFIXES": "",
         }
     )
 
     assert config.glp1_med_name_fragments == DEFAULT_GLP1_MED_NAME_FRAGMENTS
-    assert config.required_lab_names == DEFAULT_REQUIRED_LAB_NAMES
     # Blank cannot mean "cleared" — it is indistinguishable from never-set.
-    assert config.diabetes_only_lab_names == DEFAULT_DIABETES_ONLY_LAB_NAMES
+    assert config.hypothyroid_icd10_prefixes == DEFAULT_HYPOTHYROID_ICD10_PREFIXES
 
 
 def test_sentinel_clears_a_clearable_list() -> None:
-    config = Config.from_secrets({"DIABETES_ONLY_LAB_NAMES": "none"})
+    # Clearing the thyroid prefixes is how a practice switches TSH off.
+    config = Config.from_secrets({"HYPOTHYROID_ICD10_PREFIXES": "none"})
 
-    assert config.diabetes_only_lab_names == ()
+    assert config.hypothyroid_icd10_prefixes == ()
 
 
 def test_sentinel_is_not_honored_on_non_clearable_lists() -> None:

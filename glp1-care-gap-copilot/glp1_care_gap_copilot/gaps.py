@@ -4,10 +4,11 @@ Every rule here is a threshold comparison against chart data. Nothing in this
 module writes to the chart — it answers "what is overdue, and by how long", and
 the answer is reproducible from the same inputs.
 
-Query budget per render is fixed: one weight lookup, one lookup per configured
-required lab, one future-appointment existence check, one last-visit lookup,
-plus at most one diabetes-condition check. It does not grow with the size of the
-patient's chart.
+Query budget per render is fixed: one weight lookup, one future-appointment
+existence check, one last-visit lookup, and — only for patients past the
+time-on-therapy gate — one comorbidity lookup plus one lookup per required lab
+(three, or four with TSH). It does not grow with the size of the patient's
+chart.
 """
 
 from dataclasses import dataclass, field
@@ -17,11 +18,16 @@ from typing import Any, cast
 from django.db.models import Q
 
 from canvas_sdk.v1.data.appointment import Appointment, AppointmentProgressStatus
-from canvas_sdk.v1.data.lab import LabValue
 from canvas_sdk.v1.data.observation import Observation
 
-from glp1_care_gap_copilot.cohort import has_active_condition_with_prefixes
+from glp1_care_gap_copilot.cohort import CohortMatch
 from glp1_care_gap_copilot.config import Config
+from glp1_care_gap_copilot.labs import (
+    detect_comorbidities,
+    lab_interval_days,
+    latest_result_datetime,
+    required_labs,
+)
 
 GAP_STALE_WEIGHT = "stale_weight"
 GAP_LABS_OVERDUE = "labs_overdue"
@@ -74,24 +80,6 @@ def latest_weight_datetime(patient_id: str) -> datetime | None:
     )
 
 
-def latest_lab_datetime(patient_id: str, lab_name: str) -> datetime | None:
-    """Most recent result date for a lab, matched by result coding or test name."""
-    return cast(
-        datetime | None,
-        LabValue.objects.filter(
-            Q(codings__name__icontains=lab_name)
-            | Q(test__ontology_test_name__icontains=lab_name),
-            report__patient__id=patient_id,
-            report__deleted=False,
-            report__entered_in_error__isnull=True,
-            report__date_performed__isnull=False,
-        )
-        .order_by("-report__date_performed")
-        .values_list("report__date_performed", flat=True)
-        .first(),
-    )
-
-
 def has_upcoming_appointment(patient_id: str, now: datetime, horizon_days: int) -> bool:
     """Whether a non-cancelled appointment is booked within the horizon."""
     horizon = now + timedelta(days=horizon_days)
@@ -129,24 +117,6 @@ def last_visit_datetime(patient_id: str, now: datetime) -> datetime | None:
     )
 
 
-def expected_lab_names(patient_id: str, config: Config) -> tuple[str, ...]:
-    """The labs this patient is expected to have, by explicit rule.
-
-    Labs listed in `diabetes_only_lab_names` are expected only when the patient
-    carries a matching diagnosis; every other configured lab always applies.
-    """
-    conditional = {name.lower() for name in config.diabetes_only_lab_names}
-    unconditional = tuple(
-        name for name in config.required_lab_names if name.lower() not in conditional
-    )
-    requested_conditional = tuple(
-        name for name in config.required_lab_names if name.lower() in conditional
-    )
-    if not requested_conditional:
-        return unconditional
-    if has_active_condition_with_prefixes(patient_id, config.diabetes_icd10_prefixes):
-        return config.required_lab_names
-    return unconditional
 
 
 def _stale_weight_gap(patient_id: str, config: Config, now: datetime) -> Gap | None:
@@ -167,27 +137,55 @@ def _stale_weight_gap(patient_id: str, config: Config, now: datetime) -> Gap | N
     )
 
 
-def _labs_overdue_gap(patient_id: str, config: Config, now: datetime) -> Gap | None:
-    expected = expected_lab_names(patient_id, config)
+def _labs_overdue_gap(
+    patient_id: str, config: Config, now: datetime, cohort: CohortMatch
+) -> Gap | None:
+    """Which monitoring labs are due, on the interval this patient qualifies for.
+
+    Three gates, in the order they can be answered most cheaply:
+
+    1. **Time on therapy.** Below `glp1_min_days_for_labs` nothing is expected,
+       and the comorbidity and lab queries never run.
+    2. **Which labs.** Metabolic panel, lipid panel, and A1c for everyone;
+       TSH with reflex to T4 only for patients with a thyroid diagnosis.
+    3. **How stale.** A metabolic comorbidity puts the patient on the short
+       interval; obesity alone gets the long one.
+    """
+    days_on_therapy = cohort.days_on_glp1(now)
+    if days_on_therapy is None or days_on_therapy < config.glp1_min_days_for_labs:
+        # Not on a GLP-1, or too early in treatment for a result to mean
+        # anything about the drug.
+        return None
+
+    comorbidities = detect_comorbidities(patient_id, config)
+    interval = lab_interval_days(comorbidities, config)
+
     missing: list[str] = []
+    keys: list[str] = []
     staleness: list[int] = []
-    for lab_name in expected:
-        last_result = latest_lab_datetime(patient_id, lab_name)
-        days = _days_since(last_result, now)
+    for requirement in required_labs(comorbidities):
+        days = _days_since(latest_result_datetime(patient_id, requirement), now)
         if days is None:
-            missing.append(lab_name)
-        elif days > config.lab_interval_days:
-            missing.append(lab_name)
+            missing.append(requirement.label)
+            keys.append(requirement.key)
+        elif days > interval:
+            missing.append(requirement.label)
+            keys.append(requirement.key)
             staleness.append(days)
     if not missing:
         return None
+
     readable = ", ".join(missing)
     return Gap(
         key=GAP_LABS_OVERDUE,
-        label=f"Labs overdue before dose increase: {readable}",
+        label=f"Monitoring labs due: {readable}",
         detail={
             "missing": missing,
+            "missing_keys": keys,
             "days_since_last": max(staleness) if staleness else None,
+            "interval_days": interval,
+            "comorbidities": comorbidities.names,
+            "days_on_glp1": days_on_therapy,
         },
     )
 
@@ -205,11 +203,17 @@ def _no_followup_gap(patient_id: str, config: Config, now: datetime) -> Gap | No
     )
 
 
-def detect_gaps(patient_id: str, config: Config, now: datetime) -> list[Gap]:
-    """Evaluate every gap rule for the patient, newest thresholds applied."""
+def detect_gaps(
+    patient_id: str, config: Config, now: datetime, cohort: CohortMatch
+) -> list[Gap]:
+    """Evaluate every gap rule for the patient, newest thresholds applied.
+
+    `cohort` is threaded through rather than recomputed: the lab rule needs the
+    GLP-1 start date the cohort query already fetched.
+    """
     candidates = (
         _stale_weight_gap(patient_id, config, now),
-        _labs_overdue_gap(patient_id, config, now),
+        _labs_overdue_gap(patient_id, config, now, cohort),
         _no_followup_gap(patient_id, config, now),
     )
     return [gap for gap in candidates if gap is not None]

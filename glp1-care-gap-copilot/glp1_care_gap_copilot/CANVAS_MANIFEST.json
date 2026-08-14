@@ -1,6 +1,6 @@
 {
     "sdk_version": "0.1.4",
-    "plugin_version": "1.7.0",
+    "plugin_version": "2.0.0",
     "name": "glp1_care_gap_copilot",
     "description": "Surfaces GLP-1 monitoring care gaps (stale weight, overdue labs, missing follow-up) as a protocol card with one-click, clinician-reviewed actions, plus a chart summary weight-trend graph and a safety rule that raises a chart banner when rapid weight loss coincides with a clinical warning sign.",
     "components": {
@@ -40,6 +40,21 @@
             "name": "LAB_INTERVAL_DAYS"
         },
         {
+            "name": "HIGH_CHOLESTEROL_ICD10_PREFIXES"
+        },
+        {
+            "name": "PREDIABETES_ICD10_PREFIXES"
+        },
+        {
+            "name": "HYPOTHYROID_ICD10_PREFIXES"
+        },
+        {
+            "name": "GLP1_MIN_DAYS_FOR_LABS"
+        },
+        {
+            "name": "LAB_INTERVAL_OBESITY_ONLY_DAYS"
+        },
+        {
             "name": "FOLLOWUP_HORIZON_DAYS"
         },
         {
@@ -47,12 +62,6 @@
         },
         {
             "name": "OBESITY_ICD10_PREFIXES"
-        },
-        {
-            "name": "REQUIRED_LAB_NAMES"
-        },
-        {
-            "name": "DIABETES_ONLY_LAB_NAMES"
         },
         {
             "name": "DIABETES_ICD10_PREFIXES"

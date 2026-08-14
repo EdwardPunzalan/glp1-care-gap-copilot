@@ -38,8 +38,11 @@ from tests.factories import (
 
 SECRETS: dict[str, str] = {}
 
-# Worst realistic case: in scope, all three gaps open, all three labs expected.
+# Worst realistic case: in scope, past the therapy gate, every gap open. Costs
+# one comorbidity lookup plus one per required lab.
 MAX_QUERIES_IN_SCOPE = 12
+# A thyroid diagnosis adds TSH, so four lab lookups instead of three.
+MAX_QUERIES_WITH_TSH = 13
 # Out of scope must stay cheap — this is the common case across a whole panel.
 MAX_QUERIES_OUT_OF_SCOPE = 2
 # The chart summary section: a cohort check plus one windowed weigh-in read.
@@ -58,9 +61,14 @@ def render(patient_id: str) -> int:
 
 
 def loaded_patient() -> Patient:
-    """A patient with enough history that a naive implementation would fan out."""
+    """A patient with enough history that a naive implementation would fan out.
+
+    On therapy for over a year, so the lab rule is past its time-on-therapy
+    gate and the budget actually covers the lab lookups rather than
+    short-circuiting before them.
+    """
     patient = PatientFactory.create()
-    add_medication(patient, "Ozempic 4 mg tablet")
+    add_medication(patient, "Ozempic 4 mg tablet", start_date=days_ago(400))
     add_condition(patient, "E11.9", display="Type 2 diabetes mellitus")
     # History deep enough that a per-row query pattern would show up clearly.
     for days in range(1, 40):
@@ -91,7 +99,9 @@ def test_full_render_stays_within_budget() -> None:
 def test_query_count_does_not_grow_with_chart_size() -> None:
     """The budget is fixed: a chart with 20x the history costs the same."""
     small = PatientFactory.create()
-    add_medication(small, "Ozempic 4 mg tablet")
+    # Same time on therapy as the loaded patient — this test isolates chart
+    # size, so both sides must be on the same side of the lab rule's gate.
+    add_medication(small, "Ozempic 4 mg tablet", start_date=days_ago(400))
     add_condition(small, "E11.9")
     add_observation(small, "weight", days_ago(400))
     add_appointment(small, days_ahead(200))
@@ -179,3 +189,19 @@ def test_safety_query_count_does_not_grow_with_condition_count() -> None:
         add_condition(many, code, onset_date=date.today())
 
     assert render(str(many.id)) == render(str(few.id))
+
+
+def test_a_thyroid_patient_adds_only_one_more_query() -> None:
+    """TSH is a fourth lab lookup, not a second pass over the other three."""
+    patient = loaded_patient()
+    add_condition(patient, "E03.9", display="Hypothyroidism, unspecified")
+
+    assert render(str(patient.id)) <= MAX_QUERIES_WITH_TSH
+
+
+def test_a_patient_below_the_therapy_gate_skips_the_lab_queries() -> None:
+    """Nothing is expected yet, so no comorbidity or lab lookup is issued."""
+    early = PatientFactory.create()
+    add_medication(early, "Ozempic 4 mg tablet", start_date=days_ago(10))
+
+    assert render(str(early.id)) < render(str(loaded_patient().id))

@@ -58,7 +58,9 @@ def resolve_lab_order(gap: Gap, config: Config) -> LabOrderCommand | None:
     """
     if not config.lab_partner_name or not config.lab_test_order_codes:
         return None
-    missing = gap.detail.get("missing")
+    # Keyed by requirement key ("metabolic panel"), not by the human label,
+    # so an operator maps one code per requirement rather than one per phrasing.
+    missing = gap.detail.get("missing_keys")
     if not isinstance(missing, list) or not missing:
         return None
 
