@@ -176,7 +176,7 @@ def test_a_coded_condition_triggers_without_any_form() -> None:
 
     assert signal.triggered is True
     assert signal.screened is False
-    assert signal.labels == ["Dehydration or orthostasis"]
+    assert signal.labels == ["Dehydration"]
 
 
 def test_undotted_icd10_codes_match_too() -> None:
@@ -209,7 +209,7 @@ def test_the_same_finding_from_both_sources_counts_once() -> None:
 
     signal = evaluate_safety(str(patient.id), CONFIG)
 
-    assert signal.labels == ["Dehydration or orthostasis"]
+    assert signal.labels == ["Dehydration"]
     assert len(signal.findings) == 1
 
 

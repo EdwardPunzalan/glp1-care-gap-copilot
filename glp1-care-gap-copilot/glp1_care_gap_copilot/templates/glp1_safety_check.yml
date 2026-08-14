@@ -46,7 +46,7 @@ questions:
         code: N
         value: "0"
 
-  - content: "Dehydration or orthostasis"
+  - content: "Dehydration"
     code_system: INTERNAL
     code: GLP1SC_DEHYDRATION
     responses_code_system: INTERNAL

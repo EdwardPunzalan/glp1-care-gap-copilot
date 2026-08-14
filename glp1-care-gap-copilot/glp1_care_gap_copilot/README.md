@@ -301,7 +301,7 @@ It fires when **both** hold:
 |---|---|---|
 | Very poor oral intake | `GLP1SC_INTAKE` | `R63.0`, `R63.3` |
 | Persistent nausea, vomiting, or diarrhea | `GLP1SC_GI` | `R11`, `R19.7`, `K52.9` |
-| Dehydration or orthostasis | `GLP1SC_DEHYDRATION` | `E86`, `I95.1` |
+| Dehydration | `GLP1SC_DEHYDRATION` | `E86` |
 | Weakness or significant fatigue | `GLP1SC_FATIGUE` | `R53` |
 | Evidence of muscle loss | `GLP1SC_MUSCLE` | `M62.84`, `M62.5` |
 | Inadequate protein intake | `GLP1SC_PROTEIN` | `E43`, `E44`, `E46` |

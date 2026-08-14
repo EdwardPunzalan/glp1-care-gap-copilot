@@ -73,9 +73,13 @@ FINDINGS: tuple[Finding, ...] = (
     ),
     Finding(
         key="dehydration",
-        label="Dehydration or orthostasis",
+        label="Dehydration",
         question_code="GLP1SC_DEHYDRATION",
-        icd10_prefixes=("E86", "I95.1"),
+        # E86 is volume depletion/dehydration. Orthostasis (I95.1) was
+        # deliberately dropped: it is a sign that often has causes other than
+        # volume loss, so pairing it with rapid weight loss produced alerts the
+        # clinician did not want.
+        icd10_prefixes=("E86",),
     ),
     Finding(
         key="fatigue",
