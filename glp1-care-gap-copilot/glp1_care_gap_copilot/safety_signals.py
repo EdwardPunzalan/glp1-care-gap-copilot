@@ -163,6 +163,12 @@ def _questionnaire_findings(
     The second element separates "the form says no" from "there is no form",
     which the narrative needs in order to stay honest about its own blind spot.
     """
+    # Matched on the questionnaire *code*, never on its id. Editing the shipped
+    # template makes Canvas retire the old row and create a new one under the
+    # same code, so an id match would silently stop counting every check
+    # completed before the most recent deploy. `.distinct()` guards the other
+    # side of that: the code now matches more than one row, and the join would
+    # otherwise return an interview once per matching version.
     interview_dbids = list(
         Interview.objects.for_patient(patient_id)
         .committed()
@@ -173,7 +179,8 @@ def _questionnaire_findings(
             created__date__lte=latest,
         )
         .order_by("-created")
-        .values_list("dbid", flat=True)[:MAX_INTERVIEWS]
+        .values_list("dbid", flat=True)
+        .distinct()[:MAX_INTERVIEWS]
     )
     if not interview_dbids:
         return (), False
