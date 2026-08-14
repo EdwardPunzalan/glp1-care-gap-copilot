@@ -6,6 +6,7 @@ so a future change that introduces a per-row query fails here rather than in
 production.
 """
 
+from datetime import date
 from unittest.mock import Mock
 
 from canvas_sdk.events import EventType
@@ -29,6 +30,8 @@ from tests.factories import (
     add_condition,
     add_medication,
     add_observation,
+    add_weight,
+    complete_safety_check,
     days_ago,
     days_ahead,
 )
@@ -134,3 +137,45 @@ def test_weight_trend_query_count_does_not_grow_with_weigh_in_count() -> None:
     many = loaded_patient()
 
     assert render_section(str(many.id)) == render_section(str(few.id))
+
+
+# The safety rule's expensive path. Without a rapid drop it short-circuits at 10
+# queries; a flagged drop adds exactly three — committed interviews, their
+# responses, and one OR-ed condition lookup covering all seven findings.
+MAX_QUERIES_SAFETY_TRIGGERED = 14
+
+
+def rapid_loss_patient() -> Patient:
+    """A loaded chart that also has a flagged drop and a completed safety check."""
+    patient = loaded_patient()
+    add_weight(patient, 250.0, days_ago(21))
+    add_weight(patient, 248.0, days_ago(14))
+    add_weight(patient, 239.0, days_ago(7))
+    complete_safety_check(patient, ("GLP1SC_GI",), created=days_ago(5))
+    return patient
+
+
+def test_triggered_safety_render_stays_within_budget() -> None:
+    assert render(str(rapid_loss_patient().id)) <= MAX_QUERIES_SAFETY_TRIGGERED
+
+
+def test_safety_query_count_does_not_grow_with_form_count() -> None:
+    """Ten completed safety checks cost the same as one."""
+    few = rapid_loss_patient()
+
+    many = rapid_loss_patient()
+    for days in range(2, 12):
+        complete_safety_check(many, ("GLP1SC_GI",), created=days_ago(days))
+
+    assert render(str(many.id)) == render(str(few.id))
+
+
+def test_safety_query_count_does_not_grow_with_condition_count() -> None:
+    """A chart full of coded findings is still one condition query."""
+    few = rapid_loss_patient()
+
+    many = rapid_loss_patient()
+    for code in ("E86.0", "R11.2", "R53.83", "R10.11", "E44", "M62.84", "R63.0"):
+        add_condition(many, code, onset_date=date.today())
+
+    assert render(str(many.id)) == render(str(few.id))

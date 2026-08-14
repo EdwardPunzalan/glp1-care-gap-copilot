@@ -14,6 +14,7 @@ party.
 from glp1_care_gap_copilot.gaps import (
     GAP_LABS_OVERDUE,
     GAP_NO_FOLLOWUP,
+    GAP_SAFETY_REVIEW,
     GAP_STALE_WEIGHT,
     Gap,
 )
@@ -21,6 +22,13 @@ from glp1_care_gap_copilot.gaps import (
 
 def _describe(gap: Gap) -> str:
     days = gap.detail.get("days_since_last")
+    if gap.key == GAP_SAFETY_REVIEW:
+        labels = gap.detail.get("labels")
+        signs = ", ".join(labels).lower() if isinstance(labels, list) else "warning signs"
+        drop_lb, interval = gap.detail.get("drop_lb"), gap.detail.get("interval_days")
+        if isinstance(drop_lb, float) and isinstance(interval, int):
+            return f"{drop_lb:.0f} lb lost in {interval} days alongside {signs}"
+        return f"rapid weight loss alongside {signs}"
     if gap.key == GAP_STALE_WEIGHT:
         if isinstance(days, int):
             return f"no weight recorded in {days} days"
@@ -38,11 +46,29 @@ def _describe(gap: Gap) -> str:
 
 
 def build_narrative(gaps: list[Gap], weeks_since_last_visit: int | None) -> str:
-    """One factual sentence restating the open gaps."""
+    """One factual sentence restating the open gaps.
+
+    A safety signal leads with its own sentence rather than being folded into
+    the monitoring list — "contact this patient" and "labs are overdue" do not
+    belong in the same breath.
+    """
     if not gaps:
         return "GLP-1 monitoring is up to date; no open care gaps."
-    described = "; ".join(_describe(gap) for gap in gaps)
-    sentence = f"Open GLP-1 monitoring gaps: {described}."
+
+    safety = [gap for gap in gaps if gap.key == GAP_SAFETY_REVIEW]
+    routine = [gap for gap in gaps if gap.key != GAP_SAFETY_REVIEW]
+
+    prefix = ""
+    if safety:
+        prefix = f"SAFETY: {'; '.join(_describe(gap) for gap in safety)}. "
+        if not routine:
+            base = prefix.rstrip()
+            if weeks_since_last_visit is not None:
+                return f"{base[:-1]} (last visit {weeks_since_last_visit} weeks ago)."
+            return base
+
+    described = "; ".join(_describe(gap) for gap in routine)
+    sentence = f"{prefix}Open GLP-1 monitoring gaps: {described}."
     if weeks_since_last_visit is not None:
         sentence = f"{sentence[:-1]} (last visit {weeks_since_last_visit} weeks ago)."
     return sentence

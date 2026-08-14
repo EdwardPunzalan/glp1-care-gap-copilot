@@ -26,6 +26,11 @@ from glp1_care_gap_copilot.config import Config
 GAP_STALE_WEIGHT = "stale_weight"
 GAP_LABS_OVERDUE = "labs_overdue"
 GAP_NO_FOLLOWUP = "no_followup"
+#: Not an overdue-monitoring gap like the others — a safety signal. It is
+#: carried as a Gap so it inherits the card row, the outreach button, and the
+#: open-task dedupe for free, but it is detected in `safety_signals` and always
+#: sorts to the front of the card.
+GAP_SAFETY_REVIEW = "safety_review"
 
 WEIGHT_OBSERVATION_NAMES = ("weight", "bmi")
 

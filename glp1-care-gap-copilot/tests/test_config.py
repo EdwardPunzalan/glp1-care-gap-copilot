@@ -231,3 +231,29 @@ def test_a_malformed_drop_window_falls_back_to_the_default(caplog) -> None:  # t
 
     assert config.weight_drop_max_interval_days == 7.0
     assert "is not a number" in caplog.text
+
+
+def test_safety_settings_have_documented_defaults() -> None:
+    config = Config.from_secrets({})
+
+    assert config.safety_window_days == 30
+    assert config.safety_min_findings == 1
+
+
+def test_safety_settings_are_configurable() -> None:
+    config = Config.from_secrets(
+        {"SAFETY_WINDOW_DAYS": "90", "SAFETY_MIN_FINDINGS": "2"}
+    )
+
+    assert config.safety_window_days == 90
+    assert config.safety_min_findings == 2
+
+
+def test_a_non_positive_safety_window_falls_back_to_the_default(caplog) -> None:  # type: ignore[no-untyped-def]
+    # A zero-day window would pair a drop only with same-day findings, which in
+    # practice means never firing at all.
+    with caplog.at_level(logging.WARNING):
+        config = Config.from_secrets({"SAFETY_WINDOW_DAYS": "0"})
+
+    assert config.safety_window_days == 30
+    assert "must be positive" in caplog.text

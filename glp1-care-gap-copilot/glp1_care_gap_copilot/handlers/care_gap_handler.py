@@ -9,6 +9,7 @@ are), so upserting a card here cannot loop.
 from datetime import datetime, timezone
 
 from canvas_sdk.effects import Effect
+from canvas_sdk.effects.banner_alert import AddBannerAlert, RemoveBannerAlert
 from canvas_sdk.events import EventType
 from canvas_sdk.handlers import BaseHandler
 from logger import log
@@ -19,6 +20,13 @@ from glp1_care_gap_copilot.config import Config
 from glp1_care_gap_copilot.dedupe import gaps_with_open_tasks
 from glp1_care_gap_copilot.gaps import detect_gaps, weeks_since_last_visit
 from glp1_care_gap_copilot.rationale import build_narrative
+from glp1_care_gap_copilot.safety_signals import (
+    BANNER_KEY,
+    SafetySignal,
+    banner_narrative,
+    evaluate_safety,
+    safety_gap,
+)
 
 
 class GLP1CareGapHandler(BaseHandler):
@@ -53,7 +61,11 @@ class GLP1CareGapHandler(BaseHandler):
             return []
 
         now = datetime.now(timezone.utc)
+        signal = evaluate_safety(patient_id, config)
         gaps = detect_gaps(patient_id, config, now)
+        if signal.triggered:
+            # Front of the card: a safety signal outranks every monitoring gap.
+            gaps = [safety_gap(signal), *gaps]
         suppressed = gaps_with_open_tasks(patient_id, config, [gap.key for gap in gaps])
         narrative = build_narrative(gaps, weeks_since_last_visit(patient_id, now))
 
@@ -61,6 +73,25 @@ class GLP1CareGapHandler(BaseHandler):
         log.info(
             "[glp1-care-gap-copilot] card rendered: "
             f"on_glp1={cohort.on_glp1_medication} "
-            f"gaps={[gap.key for gap in gaps]} suppressed={sorted(suppressed)}"
+            f"gaps={[gap.key for gap in gaps]} suppressed={sorted(suppressed)} "
+            f"safety={[finding.key for finding in signal.findings]}"
         )
-        return [card.apply()]
+        return [card.apply(), self._banner(patient_id, signal)]
+
+    def _banner(self, patient_id: str, signal: SafetySignal) -> Effect:
+        """Raise or clear the chart banner to match the current signal.
+
+        A banner Canvas has already drawn stays on the chart until something
+        removes it, so the resolved case has to emit `RemoveBannerAlert` rather
+        than simply emitting nothing — otherwise the alert outlives the problem
+        and the clinician learns to ignore it.
+        """
+        if not signal.triggered:
+            return RemoveBannerAlert(key=BANNER_KEY, patient_id=patient_id).apply()
+        return AddBannerAlert(
+            patient_id=patient_id,
+            key=BANNER_KEY,
+            narrative=banner_narrative(signal),
+            placement=[AddBannerAlert.Placement.CHART],
+            intent=AddBannerAlert.Intent.ALERT,
+        ).apply()

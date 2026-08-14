@@ -70,6 +70,17 @@ DEFAULT_WEIGHT_DROP_ALERT_LB = 5.0
 # at 7 a pair 8 days apart is silently ignored.
 DEFAULT_WEIGHT_DROP_MAX_INTERVAL_DAYS = 7.0
 
+# How close a warning sign has to sit to the rapid drop before the two are
+# treated as one clinical picture. Measured either side of the drop's later
+# weigh-in: a patient may report the symptom at the visit that discovers the
+# loss, or a few weeks later when they finally call in. Too wide and a summer
+# drop pairs with an autumn symptom that has nothing to do with it.
+DEFAULT_SAFETY_WINDOW_DAYS = 30
+# How many of the seven warning signs must be present alongside the drop. One,
+# per the requesting clinician: this is a safety net, so it errs toward calling
+# the patient.
+DEFAULT_SAFETY_MIN_FINDINGS = 1
+
 # Maps an expected lab name to the exact lab-partner order code to order for it.
 # Deliberately empty by default and never inferred: a partner catalog carries
 # many near-identical variants of the same panel (XPC Lab lists 8 comprehensive
@@ -234,6 +245,8 @@ class Config:
     weight_trend_points: int
     weight_drop_alert_lb: float
     weight_drop_max_interval_days: float
+    safety_window_days: int
+    safety_min_findings: int
 
     @classmethod
     def from_secrets(cls, secrets: dict[str, Any] | None) -> "Config":
@@ -281,5 +294,11 @@ class Config:
                 secrets,
                 "WEIGHT_DROP_MAX_INTERVAL_DAYS",
                 DEFAULT_WEIGHT_DROP_MAX_INTERVAL_DAYS,
+            ),
+            safety_window_days=_positive_int(
+                secrets, "SAFETY_WINDOW_DAYS", DEFAULT_SAFETY_WINDOW_DAYS
+            ),
+            safety_min_findings=_positive_int(
+                secrets, "SAFETY_MIN_FINDINGS", DEFAULT_SAFETY_MIN_FINDINGS
             ),
         )

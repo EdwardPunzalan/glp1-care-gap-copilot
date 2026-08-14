@@ -1,0 +1,112 @@
+# GLP-1 Safety Check
+#
+# The seven findings a clinician asked to be warned about when they accompany
+# rapid weight loss. Three of them — poor oral intake, inadequate protein, and
+# muscle loss — have ICD-10 proxies that in practice nobody codes during a
+# routine GLP-1 visit, so this form is the only reliable way the plugin can see
+# them. The other four are here too, rather than being left to the diagnosis
+# lookup, so that one completed form answers the whole rule on its own.
+#
+# Question codes are INTERNAL and stable: glp1_care_gap_copilot/safety_signals.py
+# matches on them, so renaming a code silently breaks detection. Response codes
+# are Y/N per question, and only "Y" counts as a positive finding.
+
+name: GLP-1 Safety Check
+form_type: SA
+code_system: INTERNAL
+code: GLP1_SAFETY_CHECK
+can_originate_in_charting: true
+prologue: >-
+  Complete for patients on GLP-1 therapy showing rapid weight loss. Any single
+  "Yes" alongside a rapid drop flags the chart for clinician outreach.
+questions:
+  - content: "Very poor oral intake"
+    code_system: INTERNAL
+    code: GLP1SC_INTAKE
+    responses_code_system: INTERNAL
+    responses_type: SING
+    responses:
+      - name: "Yes"
+        code: Y
+        value: 1
+      - name: "No"
+        code: N
+        value: 0
+
+  - content: "Persistent nausea, vomiting, or diarrhea"
+    code_system: INTERNAL
+    code: GLP1SC_GI
+    responses_code_system: INTERNAL
+    responses_type: SING
+    responses:
+      - name: "Yes"
+        code: Y
+        value: 1
+      - name: "No"
+        code: N
+        value: 0
+
+  - content: "Dehydration or orthostasis"
+    code_system: INTERNAL
+    code: GLP1SC_DEHYDRATION
+    responses_code_system: INTERNAL
+    responses_type: SING
+    responses:
+      - name: "Yes"
+        code: Y
+        value: 1
+      - name: "No"
+        code: N
+        value: 0
+
+  - content: "Weakness or significant fatigue"
+    code_system: INTERNAL
+    code: GLP1SC_FATIGUE
+    responses_code_system: INTERNAL
+    responses_type: SING
+    responses:
+      - name: "Yes"
+        code: Y
+        value: 1
+      - name: "No"
+        code: N
+        value: 0
+
+  - content: "Evidence of muscle loss"
+    code_system: INTERNAL
+    code: GLP1SC_MUSCLE
+    responses_code_system: INTERNAL
+    responses_type: SING
+    responses:
+      - name: "Yes"
+        code: Y
+        value: 1
+      - name: "No"
+        code: N
+        value: 0
+
+  - content: "Inadequate protein intake"
+    code_system: INTERNAL
+    code: GLP1SC_PROTEIN
+    responses_code_system: INTERNAL
+    responses_type: SING
+    responses:
+      - name: "Yes"
+        code: Y
+        value: 1
+      - name: "No"
+        code: N
+        value: 0
+
+  - content: "Abdominal or right upper quadrant pain suggesting gallbladder disease"
+    code_system: INTERNAL
+    code: GLP1SC_RUQ
+    responses_code_system: INTERNAL
+    responses_type: SING
+    responses:
+      - name: "Yes"
+        code: Y
+        value: 1
+      - name: "No"
+        code: N
+        value: 0

@@ -47,9 +47,16 @@ Out-of-scope patients produce **no card at all**, not an empty one.
 
 | Gap | Rule | Default |
 |---|---|---|
+| **Safety review** | Rapid weight loss **and** a clinical warning sign | see below |
 | Stale weight | No weight or BMI observation within N days | 30 days |
 | Labs overdue | An expected lab has no result within N days | 90 days |
 | No follow-up | No future non-cancelled appointment within N days | 90 days |
+
+The safety review is not an overdue-monitoring gap like the other three — it is
+a signal that something may be wrong right now. It always sorts to the front of
+the card, gets a **Contact patient** button instead of the usual outreach one,
+and additionally raises a red chart banner. See
+[Rapid loss with warning signs](#rapid-loss-with-warning-signs).
 
 **Which labs are expected is decided by explicit rule.** Labs listed in
 `DIABETES_ONLY_LAB_NAMES` apply only to patients carrying a matching diagnosis
@@ -212,6 +219,76 @@ Before enabling on a shared instance, check the logs for a second responder:
 uv run canvas logs --host <instance> | grep SECTION_CONFIGURATION
 ```
 
+## Rapid loss with warning signs
+
+Weight loss is the *point* of GLP-1 therapy. Weight loss alongside vomiting,
+dehydration, or an empty plate is a reason to pick up the phone. This rule
+separates the two.
+
+It fires when **both** hold:
+
+1. The trend graph has flagged a **rapid drop** (the same rule the red band
+   uses — the banner can never disagree with the chart), and
+2. at least `SAFETY_MIN_FINDINGS` of seven warning signs appears within
+   `SAFETY_WINDOW_DAYS` either side of that drop's later weigh-in.
+
+### The seven findings
+
+| Finding | Question code | ICD-10 proxy |
+|---|---|---|
+| Very poor oral intake | `GLP1SC_INTAKE` | `R63.0`, `R63.3` |
+| Persistent nausea, vomiting, or diarrhea | `GLP1SC_GI` | `R11`, `R19.7`, `K52.9` |
+| Dehydration or orthostasis | `GLP1SC_DEHYDRATION` | `E86`, `I95.1` |
+| Weakness or significant fatigue | `GLP1SC_FATIGUE` | `R53` |
+| Evidence of muscle loss | `GLP1SC_MUSCLE` | `M62.84`, `M62.5` |
+| Inadequate protein intake | `GLP1SC_PROTEIN` | `E43`, `E44`, `E46` |
+| Abdominal/RUQ pain suggesting gallbladder disease | `GLP1SC_RUQ` | `R10.1`, `K80`, `K81` |
+
+### Two sources, deliberately
+
+**The shipped questionnaire.** This plugin ships a `GLP-1 Safety Check`
+structured assessment (`templates/glp1_safety_check.yml`, registered under
+`components.questionnaires`). All seven findings are on it, so one completed
+form answers the rule by itself. Only **committed** interviews count — a
+half-filled draft is not a clinical assertion.
+
+**Coded conditions.** Every finding also has an ICD-10 proxy, so a chart nobody
+screened can still trip the rule. In practice only the GI and constitutional
+codes get used during a routine visit: nobody reaches for `M62.84` to say a
+patient looks sarcopenic. **The condition path is a safety net, not a
+replacement for the form** — relying on it alone would leave the plugin
+permanently blind to the three nutritional findings, which are exactly the ones
+that define malnutrition risk.
+
+A finding confirmed on the form *and* inferred from a code counts once.
+
+### Why there is a time window
+
+The two halves of the rule are observed on different clocks: the drop is
+computed between two weigh-ins, while a symptom is recorded whenever the patient
+reports it. Without a window, a June weight drop would pair with a November
+diagnosis. `SAFETY_WINDOW_DAYS` is measured **either side** of the drop, because
+a patient may report the symptom at the visit that discovers the loss or a few
+weeks later when they finally call in.
+
+Conditions are matched on `onset_date` — the Canvas `Condition` model exposes no
+`created` timestamp, and onset is the clinically correct field anyway.
+
+### The banner clears itself
+
+A banner Canvas has drawn stays on the chart until something removes it, so
+every render emits either `AddBannerAlert` or `RemoveBannerAlert` — never
+nothing. Emitting nothing on the resolved path would leave the alert outliving
+the problem, and clinicians would learn to ignore it. Narratives are capped at
+Canvas's 90-character limit: one finding is named, several are counted.
+
+### What this rule cannot do
+
+**It only sees what got written into a box.** A note that says "patient reports
+she's barely eating" in prose is invisible to it. If nobody completes the form
+and nobody codes a diagnosis, a patient in trouble produces no alert. The rule
+narrows the blind spot; it does not close it.
+
 ## Configuration
 
 All values are parsed defensively — a malformed value logs a warning and falls
@@ -243,6 +320,8 @@ empty cohort or lab list would silently disable detection.
 | `WEIGHT_TREND_POINTS` | `6` | Weigh-ins plotted on the trend graph |
 | `WEIGHT_DROP_ALERT_LB` | `5` | Pounds lost between consecutive weigh-ins before the interval is flagged red |
 | `WEIGHT_DROP_MAX_INTERVAL_DAYS` | `7` | How close together those weigh-ins must be for the loss to count as rapid. At `7`, a pair 8 days apart is ignored — raise it if the practice weighs on a looser schedule |
+| `SAFETY_WINDOW_DAYS` | `30` | How close a warning sign must sit to the rapid drop, measured either side of it, before the two are treated as one clinical picture |
+| `SAFETY_MIN_FINDINGS` | `1` | How many of the seven warning signs must accompany the drop. At `1` this errs toward calling the patient; raise it to demand corroboration |
 
 ## Performance
 

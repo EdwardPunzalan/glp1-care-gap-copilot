@@ -11,6 +11,7 @@ make visible.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from glp1_care_gap_copilot.weight_trend import WeighIn
 
@@ -62,6 +63,12 @@ class Segment:
     #: Whole days elapsed between the two readings.
     interval_days: int
     flagged: bool
+    #: When the two readings were actually taken. Carried alongside the plot
+    #: coordinates so callers can date a flagged drop without re-querying —
+    #: the safety rule needs to know *when* the loss happened, not just where
+    #: it lands on the x axis.
+    started: datetime
+    ended: datetime
     band_x: float
     band_width: float
     label_x: float
@@ -184,6 +191,8 @@ def build_graph(
                 drop=drop,
                 interval_days=interval_days,
                 flagged=flagged,
+                started=earlier.recorded,
+                ended=later.recorded,
                 band_x=previous.x,
                 band_width=max(current.x - previous.x, 1.0),
                 label_x=(previous.x + current.x) / 2,

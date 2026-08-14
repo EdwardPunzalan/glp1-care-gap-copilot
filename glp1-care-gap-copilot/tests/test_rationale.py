@@ -3,6 +3,7 @@
 from glp1_care_gap_copilot.gaps import (
     GAP_LABS_OVERDUE,
     GAP_NO_FOLLOWUP,
+    GAP_SAFETY_REVIEW,
     GAP_STALE_WEIGHT,
     Gap,
 )
@@ -97,3 +98,51 @@ def test_narrative_makes_no_network_call() -> None:
     assert "Deterministic and offline" in source
     assert not hasattr(rationale, "generate_rationale")
     assert not hasattr(rationale, "build_payload")
+
+
+# --- the safety sentence ------------------------------------------------------
+
+SAFETY_GAP = Gap(
+    key=GAP_SAFETY_REVIEW,
+    label="Rapid weight loss (9 lb in 7d) with nausea — contact patient",
+    detail={
+        "drop_lb": 9.0,
+        "interval_days": 7,
+        "findings": ["gi_symptoms"],
+        "labels": ["Persistent nausea, vomiting, or diarrhea"],
+    },
+)
+
+
+def test_a_safety_signal_leads_with_its_own_sentence() -> None:
+    sentence = build_narrative([SAFETY_GAP, *GAPS], None)
+
+    # "Contact this patient" and "labs are overdue" do not belong in the same
+    # breath, so the safety finding gets its own clause up front.
+    assert sentence.startswith("SAFETY: 9 lb lost in 7 days alongside ")
+    assert "Open GLP-1 monitoring gaps:" in sentence
+
+
+def test_a_lone_safety_signal_needs_no_monitoring_clause() -> None:
+    sentence = build_narrative([SAFETY_GAP], None)
+
+    assert sentence == (
+        "SAFETY: 9 lb lost in 7 days alongside persistent nausea, vomiting, "
+        "or diarrhea."
+    )
+    assert "monitoring gaps" not in sentence
+
+
+def test_a_lone_safety_signal_still_reports_the_last_visit() -> None:
+    sentence = build_narrative([SAFETY_GAP], 6)
+
+    assert sentence.endswith("(last visit 6 weeks ago).")
+
+
+def test_a_safety_gap_stripped_of_its_scalars_still_reads() -> None:
+    # Defensive: the sentence degrades rather than raising if detail is lost.
+    bare = Gap(key=GAP_SAFETY_REVIEW, label="Rapid weight loss", detail={})
+
+    sentence = build_narrative([bare], None)
+
+    assert sentence == "SAFETY: rapid weight loss alongside warning signs."

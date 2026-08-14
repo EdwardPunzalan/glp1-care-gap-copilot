@@ -14,13 +14,15 @@ from logger import log
 
 from glp1_care_gap_copilot.config import Config
 from glp1_care_gap_copilot.dedupe import task_title
-from glp1_care_gap_copilot.gaps import GAP_LABS_OVERDUE, Gap
+from glp1_care_gap_copilot.gaps import GAP_LABS_OVERDUE, GAP_SAFETY_REVIEW, Gap
 
 CARD_KEY = "glp1-care-gaps"
 CARD_TITLE = "GLP-1 Care Gaps"
 ALREADY_OPEN_SUFFIX = " — outreach task already open"
 OUTREACH_BUTTON = "Outreach task"
 LAB_ORDER_BUTTON = "Order labs"
+#: The safety row asks for a phone call, not routine outreach, so it says so.
+CONTACT_BUTTON = "Contact patient"
 
 
 def _assignee(config: Config) -> TaskAssigner:
@@ -108,9 +110,10 @@ def _recommendation(gap: Gap, config: Config, suppressed: bool) -> Recommendatio
             title=gap.label, button=LAB_ORDER_BUTTON, commands=[lab_order]
         )
 
+    button = CONTACT_BUTTON if gap.key == GAP_SAFETY_REVIEW else OUTREACH_BUTTON
     return Recommendation(
         title=gap.label,
-        button=OUTREACH_BUTTON,
+        button=button,
         commands=[build_outreach_task(gap, config)],
     )
 
