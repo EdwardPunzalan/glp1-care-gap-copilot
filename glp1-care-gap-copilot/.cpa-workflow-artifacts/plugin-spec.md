@@ -311,7 +311,7 @@ panel" — so name matching either bundled every variant into one order or found
 nothing at all.
 
 `LAB_TEST_ORDER_CODES` now maps each expected lab to exactly one order code,
-chosen by the operator:
+chosen by the operator. The 1.2.0 form was keyed by lab name:
 
 ```
 hemoglobin a1c:496, comprehensive metabolic panel:10231, lipid panel:7600
@@ -323,9 +323,164 @@ and contractual call for the practice, not something the plugin should infer.
 Each code is re-validated against the partner catalog at render time, so a stale
 mapping degrades to no button rather than an invalid command.
 
-### Final delivered state (1.2.0)
+> **Superseded by 2.0.0 — see §8b.** The keys changed and TSH was added. The
+> value above is retained only as history; it is **not** what is configured.
+
+### §8b — order codes are keyed by requirement (2.0.0), TSH added (2.1.1)
+
+2.0.0 replaced the flat lab list with *requirements*, one of which ("metabolic
+panel") is satisfied by either a CMP or a BMP. A key per lab name could no
+longer express that, so `LAB_TEST_ORDER_CODES` is keyed by **requirement**.
+
+**The value configured on `xpc-dev` as of 2026-08-15:**
+
+```
+metabolic panel:10231, lipid panel:7600, hemoglobin a1c:496, tsh:36127
+```
+
+Every code verified present in the live Health Gorilla catalog under **both**
+`Generic Lab` and `XPC Lab`, each resolving to exactly one test:
+
+| Key | Code | Test |
+|---|---|---|
+| `metabolic panel` | `10231` | COMPREHENSIVE METABOLIC PANEL |
+| `lipid panel` | `7600` | LIPID PANEL, STANDARD |
+| `hemoglobin a1c` | `496` | HEMOGLOBIN A1c |
+| `tsh` | `36127` | TSH W/REFLEX TO FT4 |
+
+**⚠️ This block is the only readable record of these codes.** Plugin variable
+values are write-only: `canvas config list` reports only whether a key is set,
+and `/admin/plugin_io/plugin/` returns 403 for the operator account on
+`xpc-dev`. Nobody can read the configured value back. If it is overwritten and
+this file is lost, someone must re-choose between the **8** comprehensive
+metabolic panel variants in the catalog from scratch. Keep this file in version
+control, and update it whenever the mapping changes.
+
+To change it:
+
+```bash
+uv run canvas config set glp1_care_gap_copilot \
+  "LAB_TEST_ORDER_CODES=metabolic panel:10231, lipid panel:7600, hemoglobin a1c:496, tsh:36127" \
+  --host xpc-dev
+```
+
+`canvas config set` replaces the whole value — there is no append — which is
+why the current contents must be written down before editing.
+
+Older per-lab-name keys still resolve: the lookup tries the requirement key
+first, then the result names the requirement is satisfied by, so an instance
+still configured with `comprehensive metabolic panel:10231` keeps its order
+button. Upgrading does not silently drop it.
+
+### Delivered state (1.2.0)
 
 108 tests, 100% statement **and branch** coverage, clean under strict `mypy`,
 handler loads in the RestrictedPython sandbox, and every behavior above verified
 against real chart data on `xpc-dev` — including duplicate suppression and lab
 ordering staging exactly the two mapped tests.
+
+## Post-1.2.0 changes (2026-08-13 → 2026-08-15)
+
+Development reopened after the demo. Recorded here because these are **clinical
+decisions made by the requesting clinician**, not conclusions recoverable from
+reading the code.
+
+### §14 — weight-trend graph (1.5.0), threshold lowered (1.6.0)
+
+A chart summary section graphs the last `WEIGHT_TREND_POINTS` weigh-ins and
+shades rapid loss in red. An interval is flagged only when **both** hold: more
+than `WEIGHT_DROP_ALERT_LB` lost, **and** the readings no more than
+`WEIGHT_DROP_MAX_INTERVAL_DAYS` apart.
+
+**The interval test is what makes the flag mean "rapid."** These patients dose
+weekly; 14 lb between consecutive weekly weights is a safety signal, the same
+14 lb across ten weeks is the drug working. Without it the graph would light up
+on every successful course of treatment.
+
+The threshold was **10 lb → 5 lb per week in 1.6.0** at the clinician's request.
+Intervals are compared in **whole days**: two weigh-ins a clinician calls "a
+week apart" are never exactly 168.000 hours apart.
+
+### §15 — rapid loss with warning signs (1.7.0), refined (2.1.1)
+
+Seven findings the clinician wants paired with rapid loss: very poor oral
+intake; persistent nausea/vomiting/diarrhea; dehydration; weakness or
+significant fatigue; evidence of muscle loss; inadequate protein intake;
+abdominal/RUQ pain suggesting gallbladder disease.
+
+Decisions taken, each with the clinician:
+
+| Question | Decision |
+|---|---|
+| Where do findings come from? | **Both** a shipped questionnaire *and* coded conditions |
+| What happens on trigger? | **Red chart banner + card row** with a Contact patient button |
+| How many findings? | **Any one**, alongside the drop |
+| How close together? | **30 days** either side of the drop (`SAFETY_WINDOW_DAYS`) |
+| Orthostasis? | **Removed in 2.0.1** — often has causes other than volume loss. `E86` still triggers; `I95.1` does not |
+
+The plugin ships its own `GLP-1 Safety Check` questionnaire
+(`templates/glp1_safety_check.yml`). Only **committed** interviews count. The
+workflow is an **MA ticking the boxes** at the visit — confirmed 2026-08-15.
+
+**Canvas versions questionnaires.** Editing the template retires the existing
+row and creates a new one under the same code, so matching is on questionnaire
+**code**, never id, with `.distinct()` on the join. An id match would silently
+stop counting every check completed before the most recent deploy.
+
+**The screening row names what is missing, not that a form is missing** (2.1.1).
+Three findings are `form_only` — oral intake, protein intake, muscle loss. A
+missing nausea code is weak evidence of no nausea; a missing sarcopenia code is
+*no* evidence, because nobody codes `M62.84` at a weight-management visit. So
+the row reads "oral intake, muscle loss and protein intake not assessed" rather
+than duplicating the row above it.
+
+### §16 — labs reworked (2.0.0)
+
+Replaces §7's lab rule entirely. `REQUIRED_LAB_NAMES` and
+`DIABETES_ONLY_LAB_NAMES` are **retired** — they cannot express a two-tier rule
+with panel alternatives.
+
+Three gates, all of which must pass:
+
+1. **Time on therapy.** Nothing expected until `GLP1_MIN_DAYS_FOR_LABS` (90) on
+   a GLP-1, read from the *earliest* start among active GLP-1 medications so a
+   drug switch does not reset the clock. **A patient in scope but not on a GLP-1
+   is asked for no labs** — confirmed acceptable, as the clinic records
+   medications in Canvas.
+2. **Which labs.** Metabolic panel (CMP **or** BMP), lipid panel, A1c for
+   everyone past the gate; **TSH with reflex to T4 only for thyroid patients**,
+   by explicit decision — adding it for everyone would order a test most of
+   these patients have no indication for.
+3. **How often.** A metabolic comorbidity → `LAB_INTERVAL_DAYS` (90). Obesity
+   alone → `LAB_INTERVAL_OBESITY_ONLY_DAYS` (**365**). The clinician chose the
+   yearly tier over dropping obesity-only patients entirely.
+
+Comorbidities: high cholesterol `E78`, diabetes `E11`/`E10`, pre-diabetes `R73`,
+hypothyroidism `E03`/`E02`/`E89.0`. All four clearable with the `none` sentinel;
+clearing the thyroid list switches TSH off.
+
+### §17 — screening task workflow (2.1.0)
+
+When a rapid drop has no committed safety check in the window, the card carries
+a row with a **Task MA to screen** button. It fires even when coded conditions
+already tripped the alert — the condition path covers four of seven findings at
+best, so a diagnosis never substitutes for the form.
+
+The row states whether a visit exists to screen at. With none booked it reads
+"no visit booked — schedule and screen" and the follow-up gap sits alongside it,
+so both tasks can be sent together.
+
+### Delivered state (2.1.1)
+
+271 tests, 100% statement **and branch** coverage, clean under strict `mypy`
+across 31 files, 4 handlers load in the RestrictedPython sandbox. Every rule
+above verified live on `xpc-dev` against `Zzdemo Weeklydrop`.
+
+**Known limits, accepted:**
+
+- The safety rule only sees structured data. Prose in a note is invisible to it;
+  §17 surfaces that blind spot rather than closing it.
+- The custom chart summary section does not render on `xpc-dev` — `last_reviewed`
+  wins `PATIENT_CHART_SUMMARY__SECTION_CONFIGURATION`, which is last-writer-wins.
+  The weight-trend graph stays reachable via the patient-header button. Disable
+  `last_reviewed` to demo the section.
