@@ -15,6 +15,7 @@ from logger import log
 from glp1_care_gap_copilot.config import Config
 from glp1_care_gap_copilot.dedupe import task_title
 from glp1_care_gap_copilot.gaps import GAP_LABS_OVERDUE, GAP_SAFETY_REVIEW, Gap
+from glp1_care_gap_copilot.labs import order_code_keys
 
 CARD_KEY = "glp1-care-gaps"
 CARD_TITLE = "GLP-1 Care Gaps"
@@ -64,11 +65,13 @@ def resolve_lab_order(gap: Gap, config: Config) -> LabOrderCommand | None:
     if not isinstance(missing, list) or not missing:
         return None
 
-    requested = [
-        code
-        for code in (config.lab_test_order_codes.get(name.lower()) for name in missing)
-        if code
-    ]
+    requested = []
+    for requirement_key in missing:
+        for candidate in order_code_keys(str(requirement_key).lower()):
+            code = config.lab_test_order_codes.get(candidate.lower())
+            if code:
+                requested.append(code)
+                break
     if not requested:
         return None
 

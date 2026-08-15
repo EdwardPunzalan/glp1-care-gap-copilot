@@ -249,3 +249,26 @@ def test_partner_lookup_is_case_insensitive() -> None:
     )
 
     assert resolve_lab_order(LABS_GAP, config) is not None
+
+
+def test_a_legacy_order_code_key_still_resolves() -> None:
+    """An instance configured before the requirement keys changed keeps working."""
+    PatientFactory.create()
+    configured_partner(order_code="10231")
+    legacy = Config.from_secrets(
+        {
+            "LAB_PARTNER_NAME": "Quest",
+            # Keyed by the old full lab name, not the new requirement key.
+            "LAB_TEST_ORDER_CODES": "comprehensive metabolic panel:10231",
+        }
+    )
+    gap = Gap(
+        key=GAP_LABS_OVERDUE,
+        label="Monitoring labs due: comprehensive or basic metabolic panel",
+        detail={"missing_keys": ["metabolic panel"], "interval_days": 90},
+    )
+
+    card = build_card("patient-1", [gap], set(), "n", legacy)
+
+    assert card.recommendations[0].button == LAB_ORDER_BUTTON
+    assert card.recommendations[0].commands[0].tests_order_codes == ["10231"]

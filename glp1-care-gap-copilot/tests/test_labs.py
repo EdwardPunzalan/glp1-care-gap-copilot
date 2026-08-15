@@ -8,6 +8,7 @@ from glp1_care_gap_copilot.labs import (
     Comorbidities,
     detect_comorbidities,
     lab_interval_days,
+    order_code_keys,
     required_labs,
 )
 from tests.factories import add_condition
@@ -134,3 +135,23 @@ def test_both_intervals_are_configurable() -> None:
 
     assert lab_interval_days(Comorbidities(diabetes=True), config) == 60
     assert lab_interval_days(Comorbidities(), config) == 180
+
+
+# --- order code key aliases ---------------------------------------------------
+
+
+def test_the_requirement_key_is_tried_first() -> None:
+    assert order_code_keys("metabolic panel")[0] == "metabolic panel"
+
+
+def test_older_per_lab_name_keys_still_resolve() -> None:
+    # An instance configured before "CMP or BMP" existed mapped the full lab
+    # name. Upgrading must not silently drop its order button.
+    keys = order_code_keys("metabolic panel")
+
+    assert "comprehensive metabolic panel" in keys
+    assert "basic metabolic panel" in keys
+
+
+def test_an_unknown_key_falls_back_to_itself() -> None:
+    assert order_code_keys("something else") == ("something else",)

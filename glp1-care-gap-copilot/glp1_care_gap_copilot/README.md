@@ -122,10 +122,15 @@ not want (say) pre-diabetes pulling patients onto the short interval can say so.
 
 ### Ordering
 
-`LAB_TEST_ORDER_CODES` is keyed by **requirement key**, not by display label:
-`metabolic panel`, `lipid panel`, `hemoglobin a1c`, `tsh`. One code per
-requirement. Unmapped requirements render as an informational row with no button
-rather than a lab order the partner would reject.
+`LAB_TEST_ORDER_CODES` is keyed by **requirement key**: `metabolic panel`,
+`lipid panel`, `hemoglobin a1c`, `tsh`. One code per requirement. Unmapped
+requirements render as an informational row with no button rather than a lab
+order the partner would reject.
+
+**Older per-lab-name keys still resolve.** The requirement key is tried first,
+then the result names it is satisfied by — so an instance configured before
+"CMP or BMP" existed, mapping `comprehensive metabolic panel:10231`, keeps its
+order button on upgrade instead of silently losing it.
 
 ## Actions
 

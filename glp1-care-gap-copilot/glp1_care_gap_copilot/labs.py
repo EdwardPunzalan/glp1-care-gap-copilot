@@ -164,6 +164,28 @@ def detect_comorbidities(patient_id: str, config: Config) -> Comorbidities:
     )
 
 
+#: Every requirement, keyed for lookup by key.
+_BY_KEY = {
+    requirement.key: requirement
+    for requirement in (*BASE_REQUIREMENTS, TSH_REQUIREMENT)
+}
+
+
+def order_code_keys(requirement_key: str) -> tuple[str, ...]:
+    """Config keys that may carry this requirement's lab order code.
+
+    The requirement key first, then the result names it is satisfied by. The
+    aliases exist because the requirement keys changed when "CMP or BMP" was
+    introduced — an instance configured against the older, per-lab-name scheme
+    (`comprehensive metabolic panel:10231`) keeps resolving instead of silently
+    losing its order button on upgrade.
+    """
+    requirement = _BY_KEY.get(requirement_key)
+    if requirement is None:
+        return (requirement_key,)
+    return (requirement.key, *requirement.satisfied_by)
+
+
 def required_labs(comorbidities: Comorbidities) -> tuple[LabRequirement, ...]:
     """The labs this patient owes.
 
