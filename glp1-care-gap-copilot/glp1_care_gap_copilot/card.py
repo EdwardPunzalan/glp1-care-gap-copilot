@@ -14,7 +14,12 @@ from logger import log
 
 from glp1_care_gap_copilot.config import Config
 from glp1_care_gap_copilot.dedupe import task_title
-from glp1_care_gap_copilot.gaps import GAP_LABS_OVERDUE, GAP_SAFETY_REVIEW, Gap
+from glp1_care_gap_copilot.gaps import (
+    GAP_LABS_OVERDUE,
+    GAP_SAFETY_CHECK_DUE,
+    GAP_SAFETY_REVIEW,
+    Gap,
+)
 from glp1_care_gap_copilot.labs import order_code_keys
 
 CARD_KEY = "glp1-care-gaps"
@@ -24,6 +29,8 @@ OUTREACH_BUTTON = "Outreach task"
 LAB_ORDER_BUTTON = "Order labs"
 #: The safety row asks for a phone call, not routine outreach, so it says so.
 CONTACT_BUTTON = "Contact patient"
+#: The screening row asks an MA to fill in the form, not to call anyone.
+SAFETY_CHECK_BUTTON = "Task MA to screen"
 
 
 def _assignee(config: Config) -> TaskAssigner:
@@ -33,12 +40,23 @@ def _assignee(config: Config) -> TaskAssigner:
     return TaskAssigner(to=AssigneeType.TEAM, id=config.outreach_team_dbid)
 
 
+#: The screening task spells out what to do, because whoever picks it up is
+#: acting on it days later without the chart in front of them.
+SAFETY_CHECK_INSTRUCTION = (
+    "Complete the GLP-1 Safety Check questionnaire with the patient at their "
+    "next visit."
+)
+
+
 def build_outreach_task(gap: Gap, config: Config) -> TaskCommand:
     """A staged outreach task naming the gap it closes."""
+    comment = f"Identified by {config.task_title_prefix}: {gap.label}."
+    if gap.key == GAP_SAFETY_CHECK_DUE:
+        comment = f"{comment} {SAFETY_CHECK_INSTRUCTION}"
     return TaskCommand(
         title=task_title(config, gap.key, gap.label),
         assign_to=_assignee(config),
-        comment=f"Identified by {config.task_title_prefix}: {gap.label}.",
+        comment=comment,
     )
 
 
@@ -115,7 +133,11 @@ def _recommendation(gap: Gap, config: Config, suppressed: bool) -> Recommendatio
             title=gap.label, button=LAB_ORDER_BUTTON, commands=[lab_order]
         )
 
-    button = CONTACT_BUTTON if gap.key == GAP_SAFETY_REVIEW else OUTREACH_BUTTON
+    button = OUTREACH_BUTTON
+    if gap.key == GAP_SAFETY_REVIEW:
+        button = CONTACT_BUTTON
+    elif gap.key == GAP_SAFETY_CHECK_DUE:
+        button = SAFETY_CHECK_BUTTON
     return Recommendation(
         title=gap.label,
         button=button,

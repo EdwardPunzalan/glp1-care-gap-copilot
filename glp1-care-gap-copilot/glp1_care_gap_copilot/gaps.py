@@ -37,6 +37,10 @@ GAP_NO_FOLLOWUP = "no_followup"
 #: open-task dedupe for free, but it is detected in `safety_signals` and always
 #: sorts to the front of the card.
 GAP_SAFETY_REVIEW = "safety_review"
+#: Rapid loss with no completed safety check in the window — the plugin's own
+#: blind spot, surfaced rather than left silent. Also detected in
+#: `safety_signals` and sorted ahead of the routine monitoring gaps.
+GAP_SAFETY_CHECK_DUE = "safety_check_due"
 
 WEIGHT_OBSERVATION_NAMES = ("weight", "bmi")
 

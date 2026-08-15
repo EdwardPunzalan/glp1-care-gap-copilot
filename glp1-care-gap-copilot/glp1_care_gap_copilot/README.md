@@ -48,6 +48,7 @@ Out-of-scope patients produce **no card at all**, not an empty one.
 | Gap | Rule | Default |
 |---|---|---|
 | **Safety review** | Rapid weight loss **and** a clinical warning sign | see below |
+| **Safety check due** | Rapid weight loss and **nobody has screened** the patient | see below |
 | Stale weight | No weight or BMI observation within N days | 30 days |
 | Monitoring labs due | A required lab has no result within the patient's interval | see below |
 | No follow-up | No future non-cancelled appointment within N days | 90 days |
@@ -356,6 +357,28 @@ Canvas's 90-character limit: one finding is named, several are counted.
 she's barely eating" in prose is invisible to it. If nobody completes the form
 and nobody codes a diagnosis, a patient in trouble produces no alert. The rule
 narrows the blind spot; it does not close it.
+
+### Surfacing the blind spot
+
+Because the gap cannot be closed in code, the plugin says when it is standing in
+one. Whenever a rapid drop has **no committed safety check inside the window**,
+the card carries a second row — *"Rapid weight loss (N lb in Nd) with no safety
+check on file"* — with a **Task MA to screen** button that stages a task naming
+the questionnaire.
+
+Two details that matter:
+
+- **A coded diagnosis does not settle it.** Even when conditions already tripped
+  the alert, the screening row still appears. The condition path sees four of
+  the seven findings with any reliability, so a diagnosis is never a substitute
+  for the form that covers oral intake, protein, and muscle loss.
+- **The row states whether there is a visit to screen at.** With a follow-up
+  booked it reads "screen at next visit"; with none it reads "no visit booked —
+  schedule and screen", and the follow-up gap sits alongside it so both tasks
+  can be sent together.
+
+An all-negative form counts as screened. "We looked and they are fine" is a
+clinical assertion; silence is not.
 
 ## Configuration
 

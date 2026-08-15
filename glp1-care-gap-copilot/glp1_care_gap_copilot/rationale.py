@@ -14,6 +14,7 @@ party.
 from glp1_care_gap_copilot.gaps import (
     GAP_LABS_OVERDUE,
     GAP_NO_FOLLOWUP,
+    GAP_SAFETY_CHECK_DUE,
     GAP_SAFETY_REVIEW,
     GAP_STALE_WEIGHT,
     Gap,
@@ -29,6 +30,16 @@ def _describe(gap: Gap) -> str:
         if isinstance(drop_lb, float) and isinstance(interval, int):
             return f"{drop_lb:.0f} lb lost in {interval} days alongside {signs}"
         return f"rapid weight loss alongside {signs}"
+    if gap.key == GAP_SAFETY_CHECK_DUE:
+        drop_lb, interval = gap.detail.get("drop_lb"), gap.detail.get("interval_days")
+        booked = gap.detail.get("followup_booked")
+        where = "at the next visit" if booked else "but no visit is booked"
+        if isinstance(drop_lb, float) and isinstance(interval, int):
+            return (
+                f"{drop_lb:.0f} lb lost in {interval} days with no safety check "
+                f"on file — screen {where}"
+            )
+        return f"rapid weight loss with no safety check on file — screen {where}"
     if gap.key == GAP_STALE_WEIGHT:
         if isinstance(days, int):
             return f"no weight recorded in {days} days"
@@ -58,8 +69,9 @@ def build_narrative(gaps: list[Gap], weeks_since_last_visit: int | None) -> str:
     if not gaps:
         return "GLP-1 monitoring is up to date; no open care gaps."
 
-    safety = [gap for gap in gaps if gap.key == GAP_SAFETY_REVIEW]
-    routine = [gap for gap in gaps if gap.key != GAP_SAFETY_REVIEW]
+    leading_keys = (GAP_SAFETY_REVIEW, GAP_SAFETY_CHECK_DUE)
+    safety = [gap for gap in gaps if gap.key in leading_keys]
+    routine = [gap for gap in gaps if gap.key not in leading_keys]
 
     prefix = ""
     if safety:

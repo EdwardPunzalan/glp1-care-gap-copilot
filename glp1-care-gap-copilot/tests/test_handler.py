@@ -1,6 +1,7 @@
 """End-to-end handler behavior: event wiring, scoping, and effect shape."""
 
 import json
+from datetime import date
 from typing import Any, cast
 from unittest.mock import Mock, patch
 
@@ -14,10 +15,15 @@ from glp1_care_gap_copilot.card import (
     CARD_KEY,
     CONTACT_BUTTON,
     OUTREACH_BUTTON,
+    SAFETY_CHECK_BUTTON,
 )
 from glp1_care_gap_copilot.config import Config
 from glp1_care_gap_copilot.dedupe import task_title
-from glp1_care_gap_copilot.gaps import GAP_SAFETY_REVIEW, GAP_STALE_WEIGHT
+from glp1_care_gap_copilot.gaps import (
+    GAP_SAFETY_CHECK_DUE,
+    GAP_SAFETY_REVIEW,
+    GAP_STALE_WEIGHT,
+)
 from glp1_care_gap_copilot.handlers.care_gap_handler import GLP1CareGapHandler
 from glp1_care_gap_copilot.safety_signals import BANNER_KEY
 from tests.factories import (
@@ -287,3 +293,94 @@ def test_an_open_safety_task_removes_the_contact_button() -> None:
 
     assert safety_row.get("button") in (None, "")
     assert ALREADY_OPEN_SUFFIX.strip(" —") in safety_row["title"]
+
+
+# --- the screening ask ---------------------------------------------------------
+
+
+def rapid_loss_unscreened(patient: Any) -> None:
+    """A 9 lb weekly drop with nobody having completed a safety check."""
+    add_weight(patient, 250.0, days_ago(21))
+    add_weight(patient, 248.0, days_ago(14))
+    add_weight(patient, 239.0, days_ago(7))
+
+
+def test_an_unscreened_rapid_drop_asks_an_ma_to_screen() -> None:
+    patient = PatientFactory.create()
+    add_medication(patient, "Semaglutide 0.5 MG")
+    rapid_loss_unscreened(patient)
+    add_appointment(patient, days_ahead(14))
+
+    payload = payload_of(card_of(build_handler(str(patient.id)).compute()))
+    row = payload["data"]["recommendations"][0]
+
+    assert "no safety check on file" in row["title"]
+    assert "screen at next visit" in row["title"]
+    assert row["button"] == SAFETY_CHECK_BUTTON
+    assert row["commands"][0]["context"]["title"].startswith(
+        "[GLP-1 Copilot: safety_check_due]"
+    )
+
+
+def test_with_no_visit_booked_both_tasks_are_offered() -> None:
+    patient = PatientFactory.create()
+    add_medication(patient, "Semaglutide 0.5 MG")
+    rapid_loss_unscreened(patient)
+
+    payload = payload_of(card_of(build_handler(str(patient.id)).compute()))
+    rows = payload["data"]["recommendations"]
+    titles = [row["title"] for row in rows]
+    buttons = [row.get("button") for row in rows]
+
+    # The screening row says there is nowhere to screen, and the scheduling
+    # row sits alongside it so the clinician can send both.
+    assert any("no visit booked" in title for title in titles)
+    assert any("follow-up appointment" in title for title in titles)
+    assert SAFETY_CHECK_BUTTON in buttons
+    assert OUTREACH_BUTTON in buttons
+
+
+def test_a_completed_screen_removes_the_ask() -> None:
+    patient = PatientFactory.create()
+    add_medication(patient, "Semaglutide 0.5 MG")
+    rapid_loss_unscreened(patient)
+    complete_safety_check(patient, (), created=days_ago(3))
+
+    payload = payload_of(card_of(build_handler(str(patient.id)).compute()))
+    titles = [row["title"] for row in payload["data"]["recommendations"]]
+
+    assert not any("no safety check on file" in title for title in titles)
+
+
+def test_a_triggered_alert_still_asks_for_the_missing_screen() -> None:
+    patient = PatientFactory.create()
+    add_medication(patient, "Semaglutide 0.5 MG")
+    rapid_loss_unscreened(patient)
+    add_condition(patient, "E86.0", display="Dehydration", onset_date=date.today())
+
+    payload = payload_of(card_of(build_handler(str(patient.id)).compute()))
+    titles = [row["title"] for row in payload["data"]["recommendations"]]
+
+    # Contact-the-patient leads; the screening ask follows it.
+    assert "Rapid weight loss" in titles[0]
+    assert "no safety check on file" in titles[1]
+
+
+def test_an_open_screening_task_removes_that_button() -> None:
+    patient = PatientFactory.create()
+    add_medication(patient, "Semaglutide 0.5 MG")
+    rapid_loss_unscreened(patient)
+    TaskFactory.create(
+        patient=patient,
+        status=TaskStatus.OPEN,
+        title=task_title(
+            Config.from_secrets({}), GAP_SAFETY_CHECK_DUE, "already asked"
+        ),
+    )
+
+    payload = payload_of(card_of(build_handler(str(patient.id)).compute()))
+    row = next(
+        r for r in payload["data"]["recommendations"] if "no safety check" in r["title"]
+    )
+
+    assert not row.get("button")

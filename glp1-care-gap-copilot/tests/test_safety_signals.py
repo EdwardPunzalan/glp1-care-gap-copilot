@@ -12,6 +12,8 @@ from glp1_care_gap_copilot.safety_signals import (
     banner_narrative,
     evaluate_safety,
     latest_rapid_drop,
+    safety_check_gap,
+    safety_check_is_due,
     safety_gap,
 )
 from tests.factories import (
@@ -289,3 +291,75 @@ def test_a_long_single_finding_label_is_truncated_not_dropped() -> None:
 def test_safety_gap_refuses_an_untriggered_signal() -> None:
     with pytest.raises(AssertionError):
         safety_gap(evaluate_safety(str(glp1_patient().id), CONFIG))
+
+
+# --- the screening ask ---------------------------------------------------------
+
+
+def test_no_drop_means_no_screening_ask() -> None:
+    # Screening is prompted by rapid loss, not by the absence of a form.
+    signal = evaluate_safety(str(gradual_loss_patient().id), CONFIG)
+
+    assert safety_check_is_due(signal) is False
+
+
+def test_a_drop_with_no_form_asks_for_screening() -> None:
+    signal = evaluate_safety(str(rapid_loss_patient().id), CONFIG)
+
+    assert safety_check_is_due(signal) is True
+
+
+def test_a_completed_form_settles_the_screening_ask() -> None:
+    patient = rapid_loss_patient()
+    complete_safety_check(patient, (), created=days_ago(3))
+
+    signal = evaluate_safety(str(patient.id), CONFIG)
+
+    # All-negative still counts as screened — someone looked.
+    assert safety_check_is_due(signal) is False
+
+
+def test_a_form_outside_the_window_does_not_settle_it() -> None:
+    patient = rapid_loss_patient()
+    complete_safety_check(patient, (), created=days_ago(200))
+
+    assert safety_check_is_due(evaluate_safety(str(patient.id), CONFIG)) is True
+
+
+def test_a_coded_finding_does_not_replace_the_form() -> None:
+    patient = rapid_loss_patient()
+    add_condition(patient, "E86.0", display="Dehydration", onset_date=date.today())
+
+    signal = evaluate_safety(str(patient.id), CONFIG)
+
+    # The condition path sees four of seven findings at best, so a diagnosis is
+    # never a substitute for the form that covers eating, protein, and muscle.
+    assert signal.triggered is True
+    assert safety_check_is_due(signal) is True
+
+
+def test_the_screening_row_names_the_next_visit_when_one_is_booked() -> None:
+    signal = evaluate_safety(str(rapid_loss_patient().id), CONFIG)
+
+    gap = safety_check_gap(signal, followup_booked=True)
+
+    assert "screen at next visit" in gap.label
+    assert gap.detail["followup_booked"] is True
+
+
+def test_the_screening_row_says_so_when_no_visit_is_booked() -> None:
+    signal = evaluate_safety(str(rapid_loss_patient().id), CONFIG)
+
+    gap = safety_check_gap(signal, followup_booked=False)
+
+    # "At the next visit" is an instruction with nowhere to land, so the row
+    # tells the clinician to send the scheduling outreach too.
+    assert "no visit booked" in gap.label
+    assert gap.detail["followup_booked"] is False
+
+
+def test_the_screening_row_refuses_a_signal_without_a_drop() -> None:
+    signal = evaluate_safety(str(glp1_patient().id), CONFIG)
+
+    with pytest.raises(AssertionError):
+        safety_check_gap(signal, followup_booked=True)

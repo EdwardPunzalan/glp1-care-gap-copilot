@@ -18,13 +18,19 @@ from glp1_care_gap_copilot.card import build_card
 from glp1_care_gap_copilot.cohort import evaluate_cohort
 from glp1_care_gap_copilot.config import Config
 from glp1_care_gap_copilot.dedupe import gaps_with_open_tasks
-from glp1_care_gap_copilot.gaps import detect_gaps, weeks_since_last_visit
+from glp1_care_gap_copilot.gaps import (
+    GAP_NO_FOLLOWUP,
+    detect_gaps,
+    weeks_since_last_visit,
+)
 from glp1_care_gap_copilot.rationale import build_narrative
 from glp1_care_gap_copilot.safety_signals import (
     BANNER_KEY,
     SafetySignal,
     banner_narrative,
     evaluate_safety,
+    safety_check_gap,
+    safety_check_is_due,
     safety_gap,
 )
 
@@ -63,9 +69,16 @@ class GLP1CareGapHandler(BaseHandler):
         now = datetime.now(timezone.utc)
         signal = evaluate_safety(patient_id, config)
         gaps = detect_gaps(patient_id, config, now, cohort)
+        leading = []
         if signal.triggered:
             # Front of the card: a safety signal outranks every monitoring gap.
-            gaps = [safety_gap(signal), *gaps]
+            leading.append(safety_gap(signal))
+        if safety_check_is_due(signal):
+            # The screening ask states whether a visit exists to screen at, so
+            # the clinician can send the scheduling outreach alongside it.
+            followup_booked = not any(gap.key == GAP_NO_FOLLOWUP for gap in gaps)
+            leading.append(safety_check_gap(signal, followup_booked))
+        gaps = [*leading, *gaps]
         suppressed = gaps_with_open_tasks(patient_id, config, [gap.key for gap in gaps])
         narrative = build_narrative(gaps, weeks_since_last_visit(patient_id, now))
 

@@ -28,7 +28,7 @@ from canvas_sdk.v1.data.condition import ClinicalStatus, Condition
 from canvas_sdk.v1.data.questionnaire import Interview, InterviewQuestionResponse
 
 from glp1_care_gap_copilot.config import Config
-from glp1_care_gap_copilot.gaps import GAP_SAFETY_REVIEW, Gap
+from glp1_care_gap_copilot.gaps import GAP_SAFETY_CHECK_DUE, GAP_SAFETY_REVIEW, Gap
 from glp1_care_gap_copilot.graph import Segment, build_graph
 from glp1_care_gap_copilot.weight_trend import recent_weigh_ins
 
@@ -293,6 +293,47 @@ def safety_gap(signal: SafetySignal) -> Gap:
             "interval_days": drop.interval_days,
             "findings": [finding.key for finding in signal.findings],
             "labels": signal.labels,
+        },
+    )
+
+
+def safety_check_is_due(signal: SafetySignal) -> bool:
+    """Whether this patient lost weight fast and nobody screened them.
+
+    Fires whenever there is a rapid drop and no committed safety check inside
+    the window — including when coded conditions already tripped the alert. The
+    condition path only sees four of the seven findings with any reliability, so
+    "the diagnoses already told us something" is not a reason to skip the form
+    that covers eating, protein, and muscle loss.
+    """
+    return signal.drop is not None and not signal.screened
+
+
+def safety_check_gap(signal: SafetySignal, followup_booked: bool) -> Gap:
+    """Ask an MA to complete the safety check at the patient's next visit.
+
+    Whether a follow-up is already booked changes the ask, so it is stated on
+    the row: with no visit scheduled, "at the next visit" is an instruction with
+    nowhere to land, and the clinician needs to send the scheduling outreach
+    alongside this one.
+    """
+    drop = signal.drop
+    assert drop is not None, "safety_check_gap requires a drop to have been found"
+    tail = (
+        "screen at next visit"
+        if followup_booked
+        else "no visit booked — schedule and screen"
+    )
+    return Gap(
+        key=GAP_SAFETY_CHECK_DUE,
+        label=(
+            f"Rapid weight loss ({drop.drop:.0f} lb in {drop.interval_days}d) "
+            f"with no safety check on file — {tail}"
+        ),
+        detail={
+            "drop_lb": drop.drop,
+            "interval_days": drop.interval_days,
+            "followup_booked": followup_booked,
         },
     )
 
