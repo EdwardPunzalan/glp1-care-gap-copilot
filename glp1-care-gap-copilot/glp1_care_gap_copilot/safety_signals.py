@@ -55,6 +55,18 @@ class Finding:
     #: ICD-10 prefixes that stand in for this finding when it is coded instead.
     #: Deliberately a proxy: a coded match is suggestive, not equivalent.
     icd10_prefixes: tuple[str, ...]
+    #: True when, in practice, the only way this finding gets recorded is the
+    #: questionnaire. The ICD-10 proxies exist but nobody reaches for `M62.84`
+    #: during a routine GLP-1 visit, so an absent code says nothing at all.
+    #: These are the findings the screening row names as unassessed.
+    form_only: bool = False
+    #: Short name used when listing what has not been assessed.
+    short_label: str = ""
+
+    @property
+    def brief(self) -> str:
+        """The short name, falling back to the full label."""
+        return self.short_label or self.label.lower()
 
 
 #: Order matters — it is the order findings are listed back to the clinician.
@@ -64,6 +76,8 @@ FINDINGS: tuple[Finding, ...] = (
         label="Very poor oral intake",
         question_code="GLP1SC_INTAKE",
         icd10_prefixes=("R63.0", "R63.3"),
+        form_only=True,
+        short_label="oral intake",
     ),
     Finding(
         key="gi_symptoms",
@@ -92,12 +106,16 @@ FINDINGS: tuple[Finding, ...] = (
         label="Evidence of muscle loss",
         question_code="GLP1SC_MUSCLE",
         icd10_prefixes=("M62.84", "M62.5"),
+        form_only=True,
+        short_label="muscle loss",
     ),
     Finding(
         key="inadequate_protein",
         label="Inadequate protein intake",
         question_code="GLP1SC_PROTEIN",
         icd10_prefixes=("E43", "E44", "E46"),
+        form_only=True,
+        short_label="protein intake",
     ),
     Finding(
         key="ruq_pain",
@@ -297,6 +315,13 @@ def safety_gap(signal: SafetySignal) -> Gap:
     )
 
 
+def _readable_list(items: list[str]) -> str:
+    """Join with commas and a final "and", the way a person would write it."""
+    if len(items) <= 1:
+        return "".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
 def safety_check_is_due(signal: SafetySignal) -> bool:
     """Whether this patient lost weight fast and nobody screened them.
 
@@ -309,16 +334,52 @@ def safety_check_is_due(signal: SafetySignal) -> bool:
     return signal.drop is not None and not signal.screened
 
 
+def unassessed_findings(signal: SafetySignal) -> tuple[Finding, ...]:
+    """The findings nothing on this chart can speak to.
+
+    Only the form-only findings count. A missing nausea code is weak evidence
+    that the patient has no nausea — a clinician would likely have coded it —
+    but a missing sarcopenia code is no evidence at all, because nobody codes
+    sarcopenia at a weight-management visit. Naming the second group is honest;
+    naming the first would cry wolf.
+
+    A finding already confirmed by a coded condition drops off the list: it is
+    not unassessed, it is known.
+    """
+    known = {finding.key for finding in signal.from_conditions} | {
+        finding.key for finding in signal.from_questionnaire
+    }
+    return tuple(
+        finding
+        for finding in FINDINGS
+        if finding.form_only and finding.key not in known
+    )
+
+
 def safety_check_gap(signal: SafetySignal, followup_booked: bool) -> Gap:
     """Ask an MA to complete the safety check at the patient's next visit.
 
-    Whether a follow-up is already booked changes the ask, so it is stated on
-    the row: with no visit scheduled, "at the next visit" is an instruction with
-    nowhere to land, and the clinician needs to send the scheduling outreach
-    alongside this one.
+    The row names *what is missing* rather than merely that a form is missing.
+    On a chart where a coded condition already raised the alert, "no safety
+    check on file" reads as a duplicate of the row above it; "oral intake,
+    protein intake and muscle loss not assessed" is a different, actionable
+    statement — and it stays true even when the diagnoses look reassuring.
+
+    Whether a follow-up is already booked changes the ask, so it is stated too:
+    with no visit scheduled, "at the next visit" is an instruction with nowhere
+    to land, and the scheduling outreach has to go with it.
     """
     drop = signal.drop
     assert drop is not None, "safety_check_gap requires a drop to have been found"
+
+    missing = unassessed_findings(signal)
+    if missing:
+        gap_text = f"{_readable_list([f.brief for f in missing])} not assessed"
+    else:
+        # Every form-only finding happens to be coded already, which is rare.
+        # There is still no completed form, so the ask stands.
+        gap_text = "no safety check on file"
+
     tail = (
         "screen at next visit"
         if followup_booked
@@ -327,13 +388,15 @@ def safety_check_gap(signal: SafetySignal, followup_booked: bool) -> Gap:
     return Gap(
         key=GAP_SAFETY_CHECK_DUE,
         label=(
-            f"Rapid weight loss ({drop.drop:.0f} lb in {drop.interval_days}d) "
-            f"with no safety check on file — {tail}"
+            f"Rapid weight loss ({drop.drop:.0f} lb in {drop.interval_days}d) — "
+            f"{gap_text} — {tail}"
         ),
         detail={
             "drop_lb": drop.drop,
             "interval_days": drop.interval_days,
             "followup_booked": followup_booked,
+            "unassessed": [finding.key for finding in missing],
+            "unassessed_text": gap_text,
         },
     )
 

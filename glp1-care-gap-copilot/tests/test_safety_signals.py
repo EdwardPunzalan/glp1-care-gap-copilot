@@ -15,6 +15,7 @@ from glp1_care_gap_copilot.safety_signals import (
     safety_check_gap,
     safety_check_is_due,
     safety_gap,
+    unassessed_findings,
 )
 from tests.factories import (
     add_condition,
@@ -363,3 +364,80 @@ def test_the_screening_row_refuses_a_signal_without_a_drop() -> None:
 
     with pytest.raises(AssertionError):
         safety_check_gap(signal, followup_booked=True)
+
+
+# --- naming what is missing ----------------------------------------------------
+
+
+def test_an_unscreened_chart_cannot_speak_to_the_form_only_findings() -> None:
+    signal = evaluate_safety(str(rapid_loss_patient().id), CONFIG)
+
+    assert [f.key for f in unassessed_findings(signal)] == [
+        "poor_oral_intake",
+        "muscle_loss",
+        "inadequate_protein",
+    ]
+
+
+def test_coded_findings_are_not_listed_as_unassessed() -> None:
+    patient = rapid_loss_patient()
+    # R63.0 is the one form-only finding that does get coded in practice.
+    add_condition(patient, "R63.0", display="Anorexia", onset_date=date.today())
+
+    signal = evaluate_safety(str(patient.id), CONFIG)
+    keys = [f.key for f in unassessed_findings(signal)]
+
+    assert "poor_oral_intake" not in keys
+    assert keys == ["muscle_loss", "inadequate_protein"]
+
+
+def test_a_coded_gi_symptom_does_not_shorten_the_unassessed_list() -> None:
+    patient = rapid_loss_patient()
+    add_condition(patient, "E86.0", display="Dehydration", onset_date=date.today())
+
+    signal = evaluate_safety(str(patient.id), CONFIG)
+
+    # Knowing about dehydration says nothing about eating, protein, or muscle,
+    # which is the whole reason the screening row still appears.
+    assert len(unassessed_findings(signal)) == 3
+
+
+def test_the_row_names_the_missing_findings_rather_than_the_missing_form() -> None:
+    patient = rapid_loss_patient()
+    add_condition(patient, "E86.0", display="Dehydration", onset_date=date.today())
+
+    gap = safety_check_gap(evaluate_safety(str(patient.id), CONFIG), True)
+
+    assert "oral intake, muscle loss and protein intake not assessed" in gap.label
+    # It must not restate the finding the row above it already carries.
+    assert "dehydration" not in gap.label.lower()
+
+
+def test_the_row_falls_back_when_every_form_only_finding_is_coded() -> None:
+    patient = rapid_loss_patient()
+    for code, display in (
+        ("R63.0", "Anorexia"),
+        ("M62.84", "Sarcopenia"),
+        ("E44.0", "Moderate protein-calorie malnutrition"),
+    ):
+        add_condition(patient, code, display=display, onset_date=date.today())
+
+    gap = safety_check_gap(evaluate_safety(str(patient.id), CONFIG), True)
+
+    assert gap.detail["unassessed"] == []
+    assert "no safety check on file" in gap.label
+
+
+def test_a_single_missing_finding_reads_without_a_conjunction() -> None:
+    patient = rapid_loss_patient()
+    for code, display in (
+        ("R63.0", "Anorexia"),
+        ("M62.84", "Sarcopenia"),
+    ):
+        add_condition(patient, code, display=display, onset_date=date.today())
+
+    gap = safety_check_gap(evaluate_safety(str(patient.id), CONFIG), True)
+
+    # "protein intake not assessed", not "and protein intake not assessed".
+    assert "protein intake not assessed" in gap.label
+    assert " and " not in gap.label

@@ -152,7 +152,12 @@ def test_a_safety_gap_stripped_of_its_scalars_still_reads() -> None:
 SCREEN_GAP = Gap(
     key=GAP_SAFETY_CHECK_DUE,
     label="Rapid weight loss (9 lb in 7d) with no safety check on file",
-    detail={"drop_lb": 9.0, "interval_days": 7, "followup_booked": False},
+    detail={
+        "drop_lb": 9.0,
+        "interval_days": 7,
+        "followup_booked": False,
+        "unassessed_text": "oral intake, muscle loss and protein intake not assessed",
+    },
 )
 
 
@@ -160,7 +165,7 @@ def test_the_screening_ask_leads_alongside_the_safety_signal() -> None:
     sentence = build_narrative([SAFETY_GAP, SCREEN_GAP, *GAPS], None)
 
     assert sentence.startswith("SAFETY:")
-    assert "no safety check on file" in sentence
+    assert "oral intake" in sentence
     assert "but no visit is booked" in sentence
 
 
@@ -179,4 +184,4 @@ def test_a_screening_gap_stripped_of_its_scalars_still_reads() -> None:
 
     sentence = build_narrative([bare], None)
 
-    assert "rapid weight loss with no safety check on file" in sentence
+    assert "rapid weight loss, no safety check on file" in sentence

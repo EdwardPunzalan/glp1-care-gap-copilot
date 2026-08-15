@@ -33,13 +33,15 @@ def _describe(gap: Gap) -> str:
     if gap.key == GAP_SAFETY_CHECK_DUE:
         drop_lb, interval = gap.detail.get("drop_lb"), gap.detail.get("interval_days")
         booked = gap.detail.get("followup_booked")
+        gap_text = gap.detail.get("unassessed_text")
+        unassessed = gap_text if isinstance(gap_text, str) else "no safety check on file"
         where = "at the next visit" if booked else "but no visit is booked"
         if isinstance(drop_lb, float) and isinstance(interval, int):
             return (
-                f"{drop_lb:.0f} lb lost in {interval} days with no safety check "
-                f"on file — screen {where}"
+                f"{drop_lb:.0f} lb lost in {interval} days, {unassessed} — "
+                f"screen {where}"
             )
-        return f"rapid weight loss with no safety check on file — screen {where}"
+        return f"rapid weight loss, {unassessed} — screen {where}"
     if gap.key == GAP_STALE_WEIGHT:
         if isinstance(days, int):
             return f"no weight recorded in {days} days"

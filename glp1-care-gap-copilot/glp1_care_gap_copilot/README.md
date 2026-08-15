@@ -362,16 +362,29 @@ narrows the blind spot; it does not close it.
 
 Because the gap cannot be closed in code, the plugin says when it is standing in
 one. Whenever a rapid drop has **no committed safety check inside the window**,
-the card carries a second row — *"Rapid weight loss (N lb in Nd) with no safety
-check on file"* — with a **Task MA to screen** button that stages a task naming
-the questionnaire.
+the card carries a second row with a **Task MA to screen** button that stages a
+task naming the questionnaire.
 
-Two details that matter:
+**The row names what is missing, not that a form is missing:**
+
+> Rapid weight loss (7 lb in 7d) — **oral intake, muscle loss and protein intake
+> not assessed** — screen at next visit
+
+Three findings — oral intake, protein intake, and muscle loss — are marked
+`form_only`. A missing nausea code is weak evidence the patient has no nausea,
+because a clinician would likely have coded it. A missing sarcopenia code is
+**no evidence at all**, because nobody reaches for `M62.84` at a weight
+management visit. Naming the second group is honest; naming the first would cry
+wolf.
 
 - **A coded diagnosis does not settle it.** Even when conditions already tripped
-  the alert, the screening row still appears. The condition path sees four of
-  the seven findings with any reliability, so a diagnosis is never a substitute
-  for the form that covers oral intake, protein, and muscle loss.
+  the alert, the screening row still appears — and says something the row above
+  it cannot. Knowing about dehydration tells you nothing about whether the
+  patient is eating.
+- **A finding that *is* coded drops off the list.** `R63.0` (anorexia) is the
+  one form-only finding that gets coded in practice; when present, oral intake
+  is known, not unassessed. If all three happen to be coded the row falls back
+  to "no safety check on file", because there is still no form.
 - **The row states whether there is a visit to screen at.** With a follow-up
   booked it reads "screen at next visit"; with none it reads "no visit booked —
   schedule and screen", and the follow-up gap sits alongside it so both tasks

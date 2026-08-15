@@ -314,7 +314,11 @@ def test_an_unscreened_rapid_drop_asks_an_ma_to_screen() -> None:
     payload = payload_of(card_of(build_handler(str(patient.id)).compute()))
     row = payload["data"]["recommendations"][0]
 
-    assert "no safety check on file" in row["title"]
+    # The row names what is missing, not merely that a form is missing.
+    assert "oral intake" in row["title"]
+    assert "protein intake" in row["title"]
+    assert "muscle loss" in row["title"]
+    assert "not assessed" in row["title"]
     assert "screen at next visit" in row["title"]
     assert row["button"] == SAFETY_CHECK_BUTTON
     assert row["commands"][0]["context"]["title"].startswith(
@@ -349,7 +353,7 @@ def test_a_completed_screen_removes_the_ask() -> None:
     payload = payload_of(card_of(build_handler(str(patient.id)).compute()))
     titles = [row["title"] for row in payload["data"]["recommendations"]]
 
-    assert not any("no safety check on file" in title for title in titles)
+    assert not any("not assessed" in title for title in titles)
 
 
 def test_a_triggered_alert_still_asks_for_the_missing_screen() -> None:
@@ -361,9 +365,11 @@ def test_a_triggered_alert_still_asks_for_the_missing_screen() -> None:
     payload = payload_of(card_of(build_handler(str(patient.id)).compute()))
     titles = [row["title"] for row in payload["data"]["recommendations"]]
 
-    # Contact-the-patient leads; the screening ask follows it.
-    assert "Rapid weight loss" in titles[0]
-    assert "no safety check on file" in titles[1]
+    # Contact-the-patient leads; the screening ask follows it — and says
+    # something different, naming what the dehydration code cannot tell us.
+    assert "dehydration" in titles[0]
+    assert "not assessed" in titles[1]
+    assert "dehydration" not in titles[1]
 
 
 def test_an_open_screening_task_removes_that_button() -> None:
@@ -380,7 +386,7 @@ def test_an_open_screening_task_removes_that_button() -> None:
 
     payload = payload_of(card_of(build_handler(str(patient.id)).compute()))
     row = next(
-        r for r in payload["data"]["recommendations"] if "no safety check" in r["title"]
+        r for r in payload["data"]["recommendations"] if "not assessed" in r["title"]
     )
 
     assert not row.get("button")
