@@ -167,6 +167,20 @@ a command it knows to be invalid.
 If `OUTREACH_TEAM_DBID` is unset, outreach tasks are staged unassigned rather
 than losing the button.
 
+### Changing which lab an order goes to
+
+**`LAB_PARTNER_NAME` sets the default, not the destination.** The order is
+*staged*, so the **Lab Order:** field in the note is a dropdown — the clinician
+switches partners there before signing. No configuration change and no plugin
+change is needed to send an order somewhere else.
+
+The one constraint is Canvas's own: test codes are validated against whichever
+partner is selected, so switching works only where the other partner stocks the
+same codes. On `xpc-dev` all four configured codes exist under both `XPC Lab`
+and `Generic Lab`, so the dropdown is genuinely usable. On an instance where a
+second partner does not carry them, the switch fails validation at sign time —
+which is Canvas refusing an order the partner cannot fill, not a plugin bug.
+
 ## Duplicate suppression
 
 Before offering an outreach button, the plugin looks for an open task whose title
