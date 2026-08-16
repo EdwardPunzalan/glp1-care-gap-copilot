@@ -95,6 +95,15 @@ DEFAULT_SAFETY_WINDOW_DAYS = 30
 # the patient.
 DEFAULT_SAFETY_MIN_FINDINGS = 1
 
+# How far back the panel-wide scan looks for new weigh-ins. A rapid drop can only
+# appear when a new weight lands, so this is what makes the scan complete rather
+# than a sample. Two days for a nightly job: enough overlap that a single failed
+# run does not create a gap, small enough that the scan stays cheap.
+DEFAULT_ALERT_SCAN_LOOKBACK_DAYS = 2
+# Safety valve on one scan, not a paging cursor. Sized well above any realistic
+# day's weigh-ins; hitting it is logged as a sign the lookback needs revisiting.
+DEFAULT_ALERT_SCAN_MAX_PATIENTS = 500
+
 # Maps an expected lab name to the exact lab-partner order code to order for it.
 # Deliberately empty by default and never inferred: a partner catalog carries
 # many near-identical variants of the same panel (XPC Lab lists 8 comprehensive
@@ -264,6 +273,8 @@ class Config:
     weight_drop_max_interval_days: float
     safety_window_days: int
     safety_min_findings: int
+    alert_scan_lookback_days: int
+    alert_scan_max_patients: int
 
     @classmethod
     def from_secrets(cls, secrets: dict[str, Any] | None) -> "Config":
@@ -345,5 +356,11 @@ class Config:
             ),
             safety_min_findings=_positive_int(
                 secrets, "SAFETY_MIN_FINDINGS", DEFAULT_SAFETY_MIN_FINDINGS
+            ),
+            alert_scan_lookback_days=_positive_int(
+                secrets, "ALERT_SCAN_LOOKBACK_DAYS", DEFAULT_ALERT_SCAN_LOOKBACK_DAYS
+            ),
+            alert_scan_max_patients=_positive_int(
+                secrets, "ALERT_SCAN_MAX_PATIENTS", DEFAULT_ALERT_SCAN_MAX_PATIENTS
             ),
         )

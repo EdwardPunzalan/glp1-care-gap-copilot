@@ -1,0 +1,33 @@
+<!-- Result of a manually triggered alert scan. -->
+<style>
+  html, body { margin: 0; padding: 0; }
+  .sr {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Lato, sans-serif;
+    color: #16181d; padding: 26px 28px; max-width: 620px;
+  }
+  .sr-count { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+  .sr-line { font-size: 15px; margin-top: 6px; }
+  .sr-note {
+    margin-top: 20px; padding-top: 14px; border-top: 1px solid #e5e7eb;
+    font-size: 12px; color: #6b7280; line-height: 1.55;
+  }
+</style>
+<div class="sr">
+  <div class="sr-count">{{ filed }}</div>
+  <div class="sr-line">
+    {% if filed == 1 %}task filed{% else %}tasks filed{% endif %}
+    for GLP-1 safety alerts.
+  </div>
+  <div class="sr-note">
+    {% if filed == 0 %}
+      Nothing to file. Either no patient is currently flagged, or every flagged
+      patient already has an open task — the scan will not raise a second one
+      for the same signal.
+    {% else %}
+      Filed to the outreach queue. Running this again will not duplicate them:
+      a signal that already has an open task is skipped.
+    {% endif %}
+    <br>
+    Ran {{ ran_at }}. This is the same scan that runs automatically each night.
+  </div>
+</div>

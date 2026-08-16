@@ -20,6 +20,33 @@ def _marker(config: Config, gap_key: str) -> str:
     return f"[{config.task_title_prefix}: {gap_key}]"
 
 
+def patients_with_open_tasks(
+    patient_ids: list[str], config: Config
+) -> dict[str, set[str]]:
+    """Open plugin task keys per patient, for a whole batch in one query.
+
+    The per-patient version below is right for a single chart render. A nightly
+    scan touching many patients must not issue a query each: that is the shape
+    that turns a scheduled job into an outage.
+    """
+    if not patient_ids:
+        return {}
+    rows = Task.objects.filter(
+        patient__id__in=patient_ids,
+        status=TaskStatus.OPEN,
+        title__istartswith=f"[{config.task_title_prefix}:",
+    ).values_list("patient__id", "title")
+
+    prefix = f"[{config.task_title_prefix}: "
+    open_keys: dict[str, set[str]] = {}
+    for patient_id, title in rows:
+        if not title.startswith(prefix):
+            continue
+        key = title[len(prefix) :].split("]", 1)[0]
+        open_keys.setdefault(str(patient_id), set()).add(key)
+    return open_keys
+
+
 def gaps_with_open_tasks(patient_id: str, config: Config, gap_keys: list[str]) -> set[str]:
     """Which of the given gap keys already have an open outreach task."""
     if not gap_keys:

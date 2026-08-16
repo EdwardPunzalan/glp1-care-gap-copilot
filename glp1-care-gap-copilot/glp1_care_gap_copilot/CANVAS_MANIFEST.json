@@ -1,6 +1,6 @@
 {
     "sdk_version": "0.1.4",
-    "plugin_version": "2.2.2",
+    "plugin_version": "2.3.0",
     "name": "glp1_care_gap_copilot",
     "description": "Surfaces GLP-1 monitoring care gaps (stale weight, overdue labs, missing follow-up) as a protocol card with one-click, clinician-reviewed actions, plus a chart summary weight-trend graph and a safety rule that raises a chart banner when rapid weight loss coincides with a clinical warning sign.",
     "components": {
@@ -20,6 +20,10 @@
             {
                 "class": "glp1_care_gap_copilot.handlers.weight_trend_handler:GLP1WeightTrendButton",
                 "description": "Patient-header button that opens the weight-trend graph full size in a modal."
+            },
+            {
+                "class": "glp1_care_gap_copilot.handlers.alert_scan_handler:GLP1AlertScan",
+                "description": "Nightly scan that files GLP-1 safety alerts as tasks for patients weighed recently."
             }
         ],
         "commands": [],
@@ -29,6 +33,22 @@
         "questionnaires": [
             {
                 "template": "templates/glp1_safety_check.yml"
+            }
+        ],
+        "applications": [
+            {
+                "class": "glp1_care_gap_copilot.handlers.alert_dashboard_handler:GLP1AlertDashboard",
+                "name": "GLP-1 Safety Alerts",
+                "description": "Patients whose recent weigh-ins raise a safety signal.",
+                "icon": "assets/alerts-icon.png",
+                "scope": "global"
+            },
+            {
+                "class": "glp1_care_gap_copilot.handlers.alert_dashboard_handler:GLP1AlertScanNow",
+                "name": "Run GLP-1 Alert Scan",
+                "description": "Run the nightly safety scan now and file any outstanding tasks.",
+                "icon": "assets/scan-icon.png",
+                "scope": "global"
             }
         ]
     },
@@ -92,6 +112,12 @@
         },
         {
             "name": "SAFETY_MIN_FINDINGS"
+        },
+        {
+            "name": "ALERT_SCAN_LOOKBACK_DAYS"
+        },
+        {
+            "name": "ALERT_SCAN_MAX_PATIENTS"
         }
     ],
     "tags": {},

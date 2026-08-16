@@ -25,6 +25,8 @@ restates detected facts; it makes no clinical decisions.
 | `PATIENT_CHART_SUMMARY__GET_CUSTOM_SECTION` | Weight trend | The chart summary requests our section's content |
 | `SHOW_CHART_PATIENT_HEADER_BUTTON` | Weight trend button | The patient header decides which buttons to show |
 | `ACTION_BUTTON_CLICKED` | Weight trend button | The "Weight trend" button is clicked |
+| `CRON` | Alert scan | Nightly at 07:00 UTC |
+| `APPLICATION__ON_OPEN` | Alert apps | A GLP-1 alert app is opened from the drawer |
 
 The first two events target the Patient. Neither is on Canvas's
 [disallowed list](https://docs.canvasmedical.com/sdk/effects/) for
@@ -433,6 +435,61 @@ wolf.
 An all-negative form counts as screened. "We looked and they are fine" is a
 clinical assertion; silence is not.
 
+## Off-chart alerts
+
+The chart card only fires when someone opens the chart — which means the patient
+nobody opened, the one most likely to be missed, is exactly the one it cannot
+help. Three surfaces invert that.
+
+### The nightly scan
+
+`GLP1AlertScan` is a `CronTask` running at **07:00 UTC**. It files safety alerts
+as tasks so the work lands in the queue clinicians already use, before clinic.
+
+**It scans patients weighed recently, not the whole panel.** A rapid drop can
+only appear when a new weight lands, so scanning everyone weighed in the last
+`ALERT_SCAN_LOOKBACK_DAYS` (default **2**) is *complete* for this rule while
+costing a query budget set by how many people the clinic weighed — not by how
+many are enrolled. A whole-panel scan would buy the same answer at a cost that
+grows forever. The two-day window also means one failed run leaves no gap.
+
+**Safety signals only.** Rapid loss with a warning sign, and rapid loss nobody
+has screened. Overdue labs and stale weights are real gaps but not time-critical,
+and a queue that mixes them buries the ones that are.
+
+**Dedupe is what keeps the queue usable.** A signal that already has an open
+plugin task is skipped, so a three-month-old gap does not collect ninety
+identical tasks. Open tasks for the whole batch come from **one** query — a
+per-patient lookup is the shape that turns a scheduled job into an outage.
+
+`MAX_TASKS_PER_RUN` (100) caps one run. A handler returns its effects in a single
+batch with a hard size ceiling, so an unbounded run could silently lose all of
+them; hitting the cap is logged as an error rather than passed over.
+
+### The dashboard
+
+**GLP-1 Safety Alerts** is a `global`-scope application — an app-drawer icon
+available outside any chart. It lists flagged patients, most urgent first, each
+linking into the chart.
+
+Its icon carries a **notification badge** with the count, which is the real point:
+a number the clinician sees without opening anything. Zero clears a stale badge;
+a failure returns `None` so a broken count never shows a wrong one.
+
+**The dashboard never files anything.** Opening it only reads.
+
+### Running the scan on demand
+
+**Run GLP-1 Alert Scan** is a second application that runs the same scan
+immediately and reports what it filed. It exists so the nightly job is testable
+without waiting for 07:00.
+
+It is a separate icon rather than a button inside the dashboard for two reasons:
+an application runs `on_open` every time it is opened, so a combined app would
+file tasks every time somebody glanced at the list; and an in-page button would
+need an HTTP endpoint for the page to call, which this plugin deliberately does
+not have.
+
 ## Configuration
 
 All values are parsed defensively — a malformed value logs a warning and falls
@@ -469,6 +526,8 @@ as an ordinary entry, because an empty cohort would silently disable the plugin.
 | `WEIGHT_DROP_MAX_INTERVAL_DAYS` | `7` | How close together those weigh-ins must be for the loss to count as rapid. At `7`, a pair 8 days apart is ignored — raise it if the practice weighs on a looser schedule |
 | `SAFETY_WINDOW_DAYS` | `30` | How close a warning sign must sit to the rapid drop, measured either side of it, before the two are treated as one clinical picture |
 | `SAFETY_MIN_FINDINGS` | `1` | How many of the seven warning signs must accompany the drop. At `1` this errs toward calling the patient; raise it to demand corroboration |
+| `ALERT_SCAN_LOOKBACK_DAYS` | `2` | How far back the nightly scan looks for new weigh-ins. Overlap so a failed run leaves no gap |
+| `ALERT_SCAN_MAX_PATIENTS` | `500` | Safety valve on one scan, not a paging cursor. Hitting it is logged |
 
 ## Performance
 
