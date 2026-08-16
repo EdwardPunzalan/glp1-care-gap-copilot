@@ -180,7 +180,7 @@ so a practice using a single lab needs no config change and sees no change on
 the card. With several, the labs gap renders one row per lab:
 
 > Monitoring labs due: … — **[Order at XPC Lab]**
-> Alternate lab — **[Order at Generic Lab]**
+> Send overdue monitoring labs to alternate — **[Order at Generic Lab]**
 
 The second row's title neither names the lab nor restates the panel list — the
 button already carries the lab, and repeating the row above would be noise.

@@ -35,7 +35,7 @@ CONTACT_BUTTON = "Contact patient"
 SAFETY_CHECK_BUTTON = "Task MA to screen"
 #: Title for the second and later lab rows. Deliberately does not name the lab —
 #: the button does that — and does not restate the panel list from the row above.
-ALTERNATE_LAB_TITLE = "Alternate lab"
+ALTERNATE_LAB_TITLE = "Send overdue monitoring labs to alternate"
 
 
 def _assignee(config: Config) -> TaskAssigner:
