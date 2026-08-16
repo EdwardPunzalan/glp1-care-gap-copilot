@@ -14,6 +14,7 @@ from glp1_care_gap_copilot.card import (
     ALREADY_OPEN_SUFFIX,
     CARD_KEY,
     CARD_TITLE,
+    ALTERNATE_LAB_TITLE,
     LAB_ORDER_BUTTON,
     OUTREACH_BUTTON,
     build_card,
@@ -332,7 +333,7 @@ def test_configured_order_decides_button_order() -> None:
     assert card.recommendations[0].button == "Order at LabCorp"
 
 
-def test_only_the_first_row_repeats_the_lab_list() -> None:
+def test_only_the_first_row_carries_the_lab_list() -> None:
     PatientFactory.create()
     configured_partner("Quest")
     configured_partner("LabCorp")
@@ -341,7 +342,11 @@ def test_only_the_first_row_repeats_the_lab_list() -> None:
     titles = [rec.title for rec in card.recommendations]
 
     assert titles[0] == LABS_GAP.label
-    assert titles[1] == "…the same order, sent to LabCorp"
+    # The button names the lab, so the title neither repeats it nor restates
+    # the panel list from the row above.
+    assert titles[1] == ALTERNATE_LAB_TITLE
+    assert "LabCorp" not in titles[1]
+    assert "hemoglobin" not in titles[1].lower()
 
 
 def test_a_partner_that_stocks_nothing_gets_no_button() -> None:

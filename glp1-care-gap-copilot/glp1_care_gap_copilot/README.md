@@ -180,7 +180,10 @@ so a practice using a single lab needs no config change and sees no change on
 the card. With several, the labs gap renders one row per lab:
 
 > Monitoring labs due: … — **[Order at XPC Lab]**
-> …the same order, sent to Generic Lab — **[Order at Generic Lab]**
+> Alternate lab — **[Order at Generic Lab]**
+
+The second row's title neither names the lab nor restates the panel list — the
+button already carries the lab, and repeating the row above would be noise.
 
 **Why buttons instead of switching in the note.** Changing the lab on an
 already-staged order makes Canvas **clear every test**, because its test picker

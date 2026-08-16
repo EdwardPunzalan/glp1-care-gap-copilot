@@ -33,6 +33,9 @@ LAB_ORDER_BUTTON = "Order labs"
 CONTACT_BUTTON = "Contact patient"
 #: The screening row asks an MA to fill in the form, not to call anyone.
 SAFETY_CHECK_BUTTON = "Task MA to screen"
+#: Title for the second and later lab rows. Deliberately does not name the lab —
+#: the button does that — and does not restate the panel list from the row above.
+ALTERNATE_LAB_TITLE = "Alternate lab"
 
 
 def _assignee(config: Config) -> TaskAssigner:
@@ -162,9 +165,10 @@ def _lab_recommendations(gap: Gap, config: Config) -> list[Recommendation]:
         ]
     rows = []
     for index, (partner_name, order) in enumerate(orders):
-        # The first row carries the full gap text; the rest would only repeat
-        # the same lab list back, so they say what differs instead.
-        title = gap.label if index == 0 else f"…the same order, sent to {partner_name}"
+        # The first row carries the full gap text. The rest say only what the
+        # row is *for* — the button already names the lab, so repeating it in
+        # the title, or restating the lab list, would just be noise.
+        title = gap.label if index == 0 else ALTERNATE_LAB_TITLE
         rows.append(
             Recommendation(
                 title=title,
