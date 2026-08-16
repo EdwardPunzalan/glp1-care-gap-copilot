@@ -11,6 +11,8 @@ from unittest.mock import Mock
 
 from canvas_sdk.events import EventType
 from canvas_sdk.test_utils.factories import (
+    LabPartnerFactory,
+    LabPartnerTestFactory,
     LabReportFactory,
     LabTestFactory,
     LabValueFactory,
@@ -205,3 +207,37 @@ def test_a_patient_below_the_therapy_gate_skips_the_lab_queries() -> None:
     add_medication(early, "Ozempic 4 mg tablet", start_date=days_ago(10))
 
     assert render(str(early.id)) < render(str(loaded_patient().id))
+
+
+def _with_partners(names: str) -> dict[str, str]:
+    return {
+        "LAB_PARTNER_NAME": names,
+        "LAB_TEST_ORDER_CODES": "hemoglobin a1c:496",
+    }
+
+
+def render_with(patient_id: str, secrets: dict[str, str]) -> int:
+    """One card render under specific secrets, returning the queries issued."""
+    event = Mock()
+    event.type = EventType.NOTE_OPENED
+    event.target = Mock(id=patient_id)
+    handler = GLP1CareGapHandler(event=event, secrets=secrets)
+    with CaptureQueriesContext(connection) as captured:
+        handler.compute()
+    return len(captured)
+
+
+def test_lab_ordering_cost_does_not_grow_with_partner_count() -> None:
+    """Partners are fetched in one query and their catalogs in a second."""
+    for name in ("Quest", "LabCorp", "BioReference"):
+        partner = LabPartnerFactory.create(name=name, active=True)
+        LabPartnerTestFactory.create(
+            lab_partner=partner, order_name="HEMOGLOBIN A1c", order_code="496"
+        )
+
+    one = render_with(str(loaded_patient().id), _with_partners("Quest"))
+    three = render_with(
+        str(loaded_patient().id), _with_partners("Quest, LabCorp, BioReference")
+    )
+
+    assert three == one

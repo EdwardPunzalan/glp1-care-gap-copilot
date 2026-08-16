@@ -18,7 +18,7 @@ from glp1_care_gap_copilot.card import (
     OUTREACH_BUTTON,
     build_card,
     build_outreach_task,
-    resolve_lab_order,
+    resolve_lab_orders,
 )
 from glp1_care_gap_copilot.config import Config
 from glp1_care_gap_copilot.gaps import GAP_LABS_OVERDUE, GAP_STALE_WEIGHT, Gap
@@ -176,7 +176,7 @@ def test_only_the_mapped_code_is_ordered_not_every_name_match() -> None:
         )
     config = Config.from_secrets(LAB_SECRETS)
 
-    order = resolve_lab_order(LABS_GAP, config)
+    order = resolve_lab_orders(LABS_GAP, config)[0][1]
 
     assert order is not None
     assert order.tests_order_codes == ["496"]
@@ -186,7 +186,7 @@ def test_no_code_map_means_no_button() -> None:
     configured_partner()
     config = Config.from_secrets({"LAB_PARTNER_NAME": "Quest"})
 
-    assert resolve_lab_order(LABS_GAP, config) is None
+    assert resolve_lab_orders(LABS_GAP, config) == []
 
 
 def test_unmapped_lab_name_yields_no_button() -> None:
@@ -196,7 +196,7 @@ def test_unmapped_lab_name_yields_no_button() -> None:
     )
 
     # The gap is missing hemoglobin a1c, which this map does not cover.
-    assert resolve_lab_order(LABS_GAP, config) is None
+    assert resolve_lab_orders(LABS_GAP, config) == []
 
 
 def test_a_code_the_partner_does_not_offer_yields_no_button() -> None:
@@ -205,7 +205,7 @@ def test_a_code_the_partner_does_not_offer_yields_no_button() -> None:
         {"LAB_PARTNER_NAME": "Quest", "LAB_TEST_ORDER_CODES": "hemoglobin a1c:99999"}
     )
 
-    assert resolve_lab_order(LABS_GAP, config) is None
+    assert resolve_lab_orders(LABS_GAP, config) == []
 
 
 def test_no_lab_partner_configured_renders_the_gap_without_a_button() -> None:
@@ -221,7 +221,7 @@ def test_unknown_lab_partner_renders_the_gap_without_a_button() -> None:
     configured_partner(name="Quest")
     config = Config.from_secrets({**LAB_SECRETS, "LAB_PARTNER_NAME": "LabCorp"})
 
-    assert resolve_lab_order(LABS_GAP, config) is None
+    assert resolve_lab_orders(LABS_GAP, config) == []
 
 
 def test_inactive_partner_is_not_used() -> None:
@@ -231,7 +231,7 @@ def test_inactive_partner_is_not_used() -> None:
     )
     config = Config.from_secrets(LAB_SECRETS)
 
-    assert resolve_lab_order(LABS_GAP, config) is None
+    assert resolve_lab_orders(LABS_GAP, config) == []
 
 
 def test_a_gap_with_no_missing_labs_produces_no_order() -> None:
@@ -239,7 +239,7 @@ def test_a_gap_with_no_missing_labs_produces_no_order() -> None:
     config = Config.from_secrets(LAB_SECRETS)
     empty = Gap(key=GAP_LABS_OVERDUE, label="Labs overdue", detail={"missing": []})
 
-    assert resolve_lab_order(empty, config) is None
+    assert resolve_lab_orders(empty, config) == []
 
 
 def test_partner_lookup_is_case_insensitive() -> None:
@@ -248,7 +248,7 @@ def test_partner_lookup_is_case_insensitive() -> None:
         {**LAB_SECRETS, "LAB_PARTNER_NAME": "quest diagnostics"}
     )
 
-    assert resolve_lab_order(LABS_GAP, config) is not None
+    assert resolve_lab_orders(LABS_GAP, config) != []
 
 
 def test_a_legacy_order_code_key_still_resolves() -> None:
@@ -272,3 +272,122 @@ def test_a_legacy_order_code_key_still_resolves() -> None:
 
     assert card.recommendations[0].button == LAB_ORDER_BUTTON
     assert card.recommendations[0].commands[0].tests_order_codes == ["10231"]
+
+
+# --- ordering to more than one lab --------------------------------------------
+
+TWO_LABS = {
+    "LAB_PARTNER_NAME": "Quest, LabCorp",
+    "LAB_TEST_ORDER_CODES": "hemoglobin a1c:496",
+}
+
+
+def test_a_single_configured_partner_keeps_the_original_button() -> None:
+    """A practice using one lab sees exactly the card it saw before."""
+    PatientFactory.create()
+    configured_partner()
+
+    card = build_card("patient-1", [LABS_GAP], set(), "n", Config.from_secrets(LAB_SECRETS))
+
+    assert len(card.recommendations) == 1
+    assert card.recommendations[0].button == LAB_ORDER_BUTTON
+
+
+def test_each_configured_partner_gets_its_own_button() -> None:
+    PatientFactory.create()
+    configured_partner("Quest")
+    configured_partner("LabCorp")
+
+    card = build_card("patient-1", [LABS_GAP], set(), "n", Config.from_secrets(TWO_LABS))
+
+    assert [rec.button for rec in card.recommendations] == [
+        "Order at Quest",
+        "Order at LabCorp",
+    ]
+
+
+def test_every_button_carries_the_complete_order() -> None:
+    """The point of the feature: no row stages a partial order."""
+    PatientFactory.create()
+    configured_partner("Quest")
+    configured_partner("LabCorp")
+
+    card = build_card("patient-1", [LABS_GAP], set(), "n", Config.from_secrets(TWO_LABS))
+
+    for rec in card.recommendations:
+        assert rec.commands[0].tests_order_codes == ["496"]
+
+
+def test_configured_order_decides_button_order() -> None:
+    PatientFactory.create()
+    configured_partner("Quest")
+    configured_partner("LabCorp")
+    reversed_config = Config.from_secrets(
+        {**TWO_LABS, "LAB_PARTNER_NAME": "LabCorp, Quest"}
+    )
+
+    card = build_card("patient-1", [LABS_GAP], set(), "n", reversed_config)
+
+    # The practice's first choice stays first, whatever order the DB returns.
+    assert card.recommendations[0].button == "Order at LabCorp"
+
+
+def test_only_the_first_row_repeats_the_lab_list() -> None:
+    PatientFactory.create()
+    configured_partner("Quest")
+    configured_partner("LabCorp")
+
+    card = build_card("patient-1", [LABS_GAP], set(), "n", Config.from_secrets(TWO_LABS))
+    titles = [rec.title for rec in card.recommendations]
+
+    assert titles[0] == LABS_GAP.label
+    assert titles[1] == "…the same order, sent to LabCorp"
+
+
+def test_a_partner_that_stocks_nothing_gets_no_button() -> None:
+    PatientFactory.create()
+    configured_partner("Quest")
+    LabPartnerFactory.create(name="LabCorp", active=True)  # carries no tests
+
+    card = build_card("patient-1", [LABS_GAP], set(), "n", Config.from_secrets(TWO_LABS))
+
+    # Rendering a button Canvas would reject is worse than rendering none.
+    assert [rec.button for rec in card.recommendations] == [LAB_ORDER_BUTTON]
+
+
+def test_an_inactive_partner_gets_no_button() -> None:
+    PatientFactory.create()
+    configured_partner("Quest")
+    retired = LabPartnerFactory.create(name="LabCorp", active=False)
+    LabPartnerTestFactory.create(
+        lab_partner=retired, order_name="HEMOGLOBIN A1c", order_code="496"
+    )
+
+    card = build_card("patient-1", [LABS_GAP], set(), "n", Config.from_secrets(TWO_LABS))
+
+    assert [rec.button for rec in card.recommendations] == [LAB_ORDER_BUTTON]
+
+
+def test_a_partner_stocking_only_some_codes_orders_only_those() -> None:
+    PatientFactory.create()
+    quest = configured_partner("Quest")
+    LabPartnerTestFactory.create(
+        lab_partner=quest, order_name="LIPID PANEL", order_code="7600"
+    )
+    configured_partner("LabCorp")  # stocks 496 only
+    gap = Gap(
+        key=GAP_LABS_OVERDUE,
+        label="Monitoring labs due: hemoglobin A1c, lipid panel",
+        detail={"missing_keys": ["hemoglobin a1c", "lipid panel"], "interval_days": 90},
+    )
+    config = Config.from_secrets(
+        {
+            "LAB_PARTNER_NAME": "Quest, LabCorp",
+            "LAB_TEST_ORDER_CODES": "hemoglobin a1c:496, lipid panel:7600",
+        }
+    )
+
+    card = build_card("patient-1", [gap], set(), "n", config)
+
+    assert card.recommendations[0].commands[0].tests_order_codes == ["496", "7600"]
+    assert card.recommendations[1].commands[0].tests_order_codes == ["496"]

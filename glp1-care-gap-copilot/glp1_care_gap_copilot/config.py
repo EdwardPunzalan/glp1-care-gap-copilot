@@ -256,7 +256,7 @@ class Config:
     lab_interval_obesity_only_days: int
     diabetes_icd10_prefixes: tuple[str, ...]
     outreach_team_dbid: int | None
-    lab_partner_name: str
+    lab_partner_names: tuple[str, ...]
     lab_test_order_codes: dict[str, str]
     task_title_prefix: str
     weight_trend_points: int
@@ -323,7 +323,10 @@ class Config:
                 DEFAULT_LAB_INTERVAL_OBESITY_ONLY_DAYS,
             ),
             outreach_team_dbid=_optional_int(secrets, "OUTREACH_TEAM_DBID"),
-            lab_partner_name=_text(secrets, "LAB_PARTNER_NAME"),
+            # A comma-separated list, first entry the default. A single name
+            # is the same string it always was, so clinics using one lab need
+            # no config change and see no change on the card.
+            lab_partner_names=_csv(secrets, "LAB_PARTNER_NAME", ()),
             lab_test_order_codes=_code_map(secrets, "LAB_TEST_ORDER_CODES"),
             task_title_prefix=_text(secrets, "TASK_TITLE_PREFIX", DEFAULT_TASK_TITLE_PREFIX),
             weight_trend_points=_positive_int(

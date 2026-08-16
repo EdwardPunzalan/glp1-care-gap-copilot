@@ -27,7 +27,7 @@ def test_defaults_apply_when_no_secrets_are_set() -> None:
     assert config.glp1_med_name_fragments == DEFAULT_GLP1_MED_NAME_FRAGMENTS
     assert config.task_title_prefix == DEFAULT_TASK_TITLE_PREFIX
     assert config.outreach_team_dbid is None
-    assert config.lab_partner_name == ""
+    assert config.lab_partner_names == ()
 
 
 def test_none_secrets_are_tolerated() -> None:
@@ -54,7 +54,7 @@ def test_values_are_read_from_secrets() -> None:
     assert config.glp1_med_name_fragments == ("semaglutide", "tirzepatide")
     assert config.obesity_icd10_prefixes == ("E66",)
     assert config.outreach_team_dbid == 77
-    assert config.lab_partner_name == "Quest"
+    assert config.lab_partner_names == ("Quest",)
     assert config.task_title_prefix == "Copilot"
 
 

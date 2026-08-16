@@ -6,6 +6,8 @@ configured, tests not offered by that partner), the gap still renders as an
 informational bullet: the plugin never emits a command it knows to be invalid.
 """
 
+from django.db.models import Q
+
 from canvas_sdk.commands import LabOrderCommand, TaskCommand
 from canvas_sdk.commands.commands.task import AssigneeType, TaskAssigner
 from canvas_sdk.effects.protocol_card import ProtocolCard, Recommendation
@@ -60,29 +62,11 @@ def build_outreach_task(gap: Gap, config: Config) -> TaskCommand:
     )
 
 
-def resolve_lab_order(gap: Gap, config: Config) -> LabOrderCommand | None:
-    """Build a lab order for the missing tests, or None if it cannot be validated.
-
-    Which test to order is taken from the operator-configured
-    `LAB_TEST_ORDER_CODES` map — one exact order code per lab name — and each
-    code is then confirmed to exist in the partner's catalog before it is used.
-
-    Matching by name was tried first and is wrong: a real catalog carries many
-    near-identical variants (XPC Lab lists 8 "comprehensive metabolic panel"
-    entries and no plain "lipid panel" at all), so a name match either ordered
-    every variant at once or found nothing. Picking among them is a clinical and
-    contractual decision, so the plugin requires it to be stated rather than
-    inferred. Anything unmapped or unrecognized yields None, and the caller
-    renders the gap without a button.
-    """
-    if not config.lab_partner_name or not config.lab_test_order_codes:
-        return None
-    # Keyed by requirement key ("metabolic panel"), not by the human label,
-    # so an operator maps one code per requirement rather than one per phrasing.
+def _requested_codes(gap: Gap, config: Config) -> list[str]:
+    """The order codes for this gap's missing labs, in requirement order."""
     missing = gap.detail.get("missing_keys")
     if not isinstance(missing, list) or not missing:
-        return None
-
+        return []
     requested = []
     for requirement_key in missing:
         for candidate in order_code_keys(str(requirement_key).lower()):
@@ -90,59 +74,126 @@ def resolve_lab_order(gap: Gap, config: Config) -> LabOrderCommand | None:
             if code:
                 requested.append(code)
                 break
+    return requested
+
+
+def resolve_lab_orders(gap: Gap, config: Config) -> list[tuple[str, LabOrderCommand]]:
+    """One (partner name, staged order) per configured partner that stocks the tests.
+
+    Two queries regardless of how many partners are configured: the partners are
+    fetched in one lookup and their catalogs in a second, then grouped in Python.
+    A per-partner query would put the card's cost at the mercy of configuration.
+
+    A partner that stocks none of the codes is skipped rather than rendered with
+    a button Canvas would reject — the same rule the single-partner path always
+    followed.
+    """
+    if not config.lab_partner_names or not config.lab_test_order_codes:
+        return []
+    requested = _requested_codes(gap, config)
     if not requested:
-        return None
+        return []
 
-    partner = LabPartner.objects.filter(
-        name__iexact=config.lab_partner_name, active=True
-    ).first()
-    if partner is None:
-        return None
+    name_query = Q()
+    for name in config.lab_partner_names:
+        name_query |= Q(name__iexact=name)
+    partners = {
+        str(row["id"]): row["name"]
+        for row in LabPartner.objects.filter(name_query, active=True).values("id", "name")
+    }
+    if not partners:
+        return []
 
-    # Confirm each configured code is actually offered by this partner, so a
-    # stale mapping degrades to "no button" instead of a command Canvas rejects.
-    known = set(
-        LabPartnerTest.objects.filter(
-            lab_partner=partner, order_code__in=requested
-        ).values_list("order_code", flat=True)
-    )
-    order_codes = [code for code in requested if code in known]
-    if not order_codes:
-        log.warning(
-            f"[glp1-care-gap-copilot] none of the configured order codes {requested} "
-            f"are offered by lab partner {config.lab_partner_name!r}; no order button"
+    # Joined on the partner's UUID, not `lab_partner__in`: the FK resolves
+    # against the integer `dbid`, so passing UUIDs there raises rather than
+    # returning nothing.
+    stocked: dict[str, set[str]] = {}
+    for partner_id, order_code in LabPartnerTest.objects.filter(
+        lab_partner__id__in=list(partners), order_code__in=requested
+    ).values_list("lab_partner__id", "order_code"):
+        stocked.setdefault(str(partner_id), set()).add(order_code)
+
+    # Configured order decides button order, so the practice's first choice
+    # stays first on the card no matter how the database sorts.
+    by_name = {name.lower(): (pid, name) for pid, name in partners.items()}
+    orders = []
+    for configured in config.lab_partner_names:
+        found = by_name.get(configured.strip().lower())
+        if found is None:
+            continue
+        partner_id, partner_name = found
+        codes = [code for code in requested if code in stocked.get(partner_id, set())]
+        if not codes:
+            log.warning(
+                f"[glp1-care-gap-copilot] lab partner {partner_name!r} stocks none of "
+                f"the configured order codes {requested}; no button for it"
+            )
+            continue
+        orders.append(
+            (
+                partner_name,
+                LabOrderCommand(
+                    lab_partner=partner_id,
+                    tests_order_codes=codes,
+                    comment=f"Monitoring labs flagged by {config.task_title_prefix}.",
+                ),
+            )
         )
-        return None
-
-    return LabOrderCommand(
-        lab_partner=str(partner.id),
-        tests_order_codes=order_codes,
-        comment=f"Monitoring labs flagged by {config.task_title_prefix}.",
-    )
+    return orders
 
 
-def _recommendation(gap: Gap, config: Config, suppressed: bool) -> Recommendation:
+def _lab_recommendations(gap: Gap, config: Config) -> list[Recommendation]:
+    """One row per lab the order can be sent to.
+
+    With a single configured partner this is exactly the old single row, so a
+    practice using one lab sees no change. With several, each gets its own
+    button carrying a *complete* order — which is the point: changing the lab on
+    an already-staged order makes Canvas clear the tests, because its test
+    picker is scoped to one partner. Choosing up front avoids that entirely.
+    """
+    orders = resolve_lab_orders(gap, config)
+    if not orders:
+        return [Recommendation(title=gap.label)]
+    if len(orders) == 1:
+        return [
+            Recommendation(
+                title=gap.label, button=LAB_ORDER_BUTTON, commands=[orders[0][1]]
+            )
+        ]
+    rows = []
+    for index, (partner_name, order) in enumerate(orders):
+        # The first row carries the full gap text; the rest would only repeat
+        # the same lab list back, so they say what differs instead.
+        title = gap.label if index == 0 else f"…the same order, sent to {partner_name}"
+        rows.append(
+            Recommendation(
+                title=title,
+                button=f"Order at {partner_name}",
+                commands=[order],
+            )
+        )
+    return rows
+
+
+def _recommendations(gap: Gap, config: Config, suppressed: bool) -> list[Recommendation]:
     if suppressed:
-        return Recommendation(title=gap.label + ALREADY_OPEN_SUFFIX)
+        return [Recommendation(title=gap.label + ALREADY_OPEN_SUFFIX)]
 
     if gap.key == GAP_LABS_OVERDUE:
-        lab_order = resolve_lab_order(gap, config)
-        if lab_order is None:
-            return Recommendation(title=gap.label)
-        return Recommendation(
-            title=gap.label, button=LAB_ORDER_BUTTON, commands=[lab_order]
-        )
+        return _lab_recommendations(gap, config)
 
     button = OUTREACH_BUTTON
     if gap.key == GAP_SAFETY_REVIEW:
         button = CONTACT_BUTTON
     elif gap.key == GAP_SAFETY_CHECK_DUE:
         button = SAFETY_CHECK_BUTTON
-    return Recommendation(
-        title=gap.label,
-        button=button,
-        commands=[build_outreach_task(gap, config)],
-    )
+    return [
+        Recommendation(
+            title=gap.label,
+            button=button,
+            commands=[build_outreach_task(gap, config)],
+        )
+    ]
 
 
 def build_card(
@@ -160,6 +211,10 @@ def build_card(
         narrative=narrative,
         status=ProtocolCard.Status.DUE if gaps else ProtocolCard.Status.SATISFIED,
         recommendations=[
-            _recommendation(gap, config, gap.key in suppressed_gap_keys) for gap in gaps
+            recommendation
+            for gap in gaps
+            for recommendation in _recommendations(
+                gap, config, gap.key in suppressed_gap_keys
+            )
         ],
     )

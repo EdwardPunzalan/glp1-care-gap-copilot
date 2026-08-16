@@ -146,7 +146,7 @@ order button on upgrade instead of silently losing it.
 requirement key to one exact order code:
 
 ```
-metabolic panel:10231, lipid panel:7600, hemoglobin a1c:496, tsh:8998
+metabolic panel:10231, lipid panel:7600, hemoglobin a1c:496, tsh:36127
 ```
 
 Matching by name was tried first and does not work against a real catalog. On
@@ -167,19 +167,42 @@ a command it knows to be invalid.
 If `OUTREACH_TEAM_DBID` is unset, outreach tasks are staged unassigned rather
 than losing the button.
 
-### Changing which lab an order goes to
+### Choosing which lab an order goes to
 
-**`LAB_PARTNER_NAME` sets the default, not the destination.** The order is
-*staged*, so the **Lab Order:** field in the note is a dropdown — the clinician
-switches partners there before signing. No configuration change and no plugin
-change is needed to send an order somewhere else.
+`LAB_PARTNER_NAME` accepts a **comma-separated list**, first entry the default:
 
-The one constraint is Canvas's own: test codes are validated against whichever
-partner is selected, so switching works only where the other partner stocks the
-same codes. On `xpc-dev` all four configured codes exist under both `XPC Lab`
-and `Generic Lab`, so the dropdown is genuinely usable. On an instance where a
-second partner does not carry them, the switch fails validation at sign time —
-which is Canvas refusing an order the partner cannot fill, not a plugin bug.
+```
+XPC Lab, Generic Lab
+```
+
+With one name it behaves exactly as it always did — one **Order labs** button —
+so a practice using a single lab needs no config change and sees no change on
+the card. With several, the labs gap renders one row per lab:
+
+> Monitoring labs due: … — **[Order at XPC Lab]**
+> …the same order, sent to Generic Lab — **[Order at Generic Lab]**
+
+**Why buttons instead of switching in the note.** Changing the lab on an
+already-staged order makes Canvas **clear every test**, because its test picker
+is scoped to one partner and the previous selections may not exist at the new
+one. That is Canvas's note UI, not something a plugin can hook.
+
+Staging the order with the lab left blank does not dodge it either: the SDK
+rejects that outright with *"lab partner is required to find tests"*. Tests
+cannot exist on the command without a partner attached.
+
+So the fix is to never switch — each button stages a **complete** order already
+pointed at the right lab.
+
+**Partners that cannot fill the order are skipped**, not rendered with a broken
+button: a partner must be active and must stock at least one of the configured
+codes. A partner stocking only some of them orders only those. Both rules follow
+the same principle as the single-partner path — never emit a command Canvas
+would reject.
+
+**Cost is fixed.** Partners are fetched in one query and their catalogs in a
+second, then grouped in Python, so adding labs to the list does not add queries
+per render. A test asserts one partner and three cost the same.
 
 ## Duplicate suppression
 
@@ -435,7 +458,7 @@ as an ordinary entry, because an empty cohort would silently disable the plugin.
 | `PREDIABETES_ICD10_PREFIXES` | `R73` | Pre-diabetes; clearable with `none` |
 | `HYPOTHYROID_ICD10_PREFIXES` | `E03,E02,E89.0` | Hypothyroidism; also gates TSH. Clearable with `none` |
 | `OUTREACH_TEAM_DBID` | — | Default task assignee (Team `dbid`) |
-| `LAB_PARTNER_NAME` | — | Lab partner name for order commands (must be active) |
+| `LAB_PARTNER_NAME` | — | Lab partner name(s) for order commands, comma-separated, first is the default. Each active partner stocking the codes gets its own button |
 | `LAB_TEST_ORDER_CODES` | — | `requirement key:order code` pairs (`metabolic panel`, `lipid panel`, `hemoglobin a1c`, `tsh`); no button for unmapped labs |
 | `TASK_TITLE_PREFIX` | `GLP-1 Copilot` | Dedupe marker |
 | `WEIGHT_TREND_POINTS` | `6` | Weigh-ins plotted on the trend graph |
