@@ -43,7 +43,7 @@ API_PREFIX = "/hub"
 PAGE_PATH = f"/plugin-io/api/{PLUGIN_NAME}{API_PREFIX}/page"
 TASK_PATH = f"/plugin-io/api/{PLUGIN_NAME}{API_PREFIX}/task"
 SCAN_PATH = f"/plugin-io/api/{PLUGIN_NAME}{API_PREFIX}/scan"
-HUB_TITLE = "GLP-1 monitoring"
+HUB_TITLE = "GLP-1 Monitoring Hub"
 
 #: Gap keys the page is allowed to file. An allow-list rather than trusting the
 #: posted value: the body comes from a browser and must not be able to write an

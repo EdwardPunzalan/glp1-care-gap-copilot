@@ -33,7 +33,7 @@ chart is already open.
 | `SHOW_CHART_PATIENT_HEADER_BUTTON` | Weight trend button | The patient header decides which buttons to show |
 | `ACTION_BUTTON_CLICKED` | Weight trend button | The "Weight trend" button is clicked |
 | `CRON` | Alert scan | Nightly at 07:00 UTC |
-| `APPLICATION__ON_OPEN` | Monitoring hub | The GLP-1 Monitoring icon is opened from the drawer |
+| `APPLICATION__ON_OPEN` | Monitoring hub | The GLP-1 Monitoring Hub icon is opened from the drawer |
 | `SIMPLE_API_REQUEST` | Hub API | The hub page loads, or one of its buttons is pressed |
 
 The first two events target the Patient. Neither is on Canvas's
@@ -479,7 +479,7 @@ them; hitting the cap is logged as an error rather than passed over.
 
 ### The monitoring hub
 
-**GLP-1 Monitoring** is a `global`-scope application — an app-drawer icon
+**GLP-1 Monitoring Hub** is a `global`-scope application — an app-drawer icon
 available outside any chart. It opens as a **full page**, not a modal: this is
 somewhere a clinician starts their day, not a dialog they dismiss.
 

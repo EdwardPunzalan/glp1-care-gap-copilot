@@ -494,7 +494,7 @@ def test_the_route_serves_the_page() -> None:
         responses = handler.page()
 
     assert responses[0].status_code == HTTPStatus.OK
-    assert b"GLP-1 monitoring" in responses[0].content
+    assert b"GLP-1 Monitoring Hub" in responses[0].content
 
 
 def test_a_broken_page_still_returns_html() -> None:
