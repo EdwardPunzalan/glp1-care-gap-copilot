@@ -104,6 +104,12 @@ DEFAULT_ALERT_SCAN_LOOKBACK_DAYS = 2
 # day's weigh-ins; hitting it is logged as a sign the lookback needs revisiting.
 DEFAULT_ALERT_SCAN_MAX_PATIENTS = 500
 
+# Patients shown on the monitoring hub. The page bulk-loads a fixed number of
+# queries regardless of this, but a thousand cards is a page nobody reads.
+DEFAULT_HUB_MAX_PATIENTS = 100
+# How far back the hub reads weigh-ins for its sparklines.
+DEFAULT_HUB_WEIGHT_DAYS = 365
+
 # Maps an expected lab name to the exact lab-partner order code to order for it.
 # Deliberately empty by default and never inferred: a partner catalog carries
 # many near-identical variants of the same panel (XPC Lab lists 8 comprehensive
@@ -275,6 +281,8 @@ class Config:
     safety_min_findings: int
     alert_scan_lookback_days: int
     alert_scan_max_patients: int
+    hub_max_patients: int
+    hub_weight_days: int
 
     @classmethod
     def from_secrets(cls, secrets: dict[str, Any] | None) -> "Config":
@@ -362,5 +370,11 @@ class Config:
             ),
             alert_scan_max_patients=_positive_int(
                 secrets, "ALERT_SCAN_MAX_PATIENTS", DEFAULT_ALERT_SCAN_MAX_PATIENTS
+            ),
+            hub_max_patients=_positive_int(
+                secrets, "HUB_MAX_PATIENTS", DEFAULT_HUB_MAX_PATIENTS
+            ),
+            hub_weight_days=_positive_int(
+                secrets, "HUB_WEIGHT_DAYS", DEFAULT_HUB_WEIGHT_DAYS
             ),
         )

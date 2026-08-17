@@ -1,0 +1,390 @@
+<!-- GLP-1 monitoring hub, served as a full page into a Canvas iframe.
+
+     Committed to a single light theme on purpose: it renders inside Canvas,
+     which is light-only, so a dark variant would only ever be wrong. Every
+     colour is painted explicitly rather than inherited from the host.
+
+     Class prefix is `gh-`, never `ad-`: ad-blocker filter lists hide elements
+     whose classes look like advertising, which once made a correct page render
+     completely blank.
+
+     Semantic colour (critical / warn / ok) is deliberately separate from the
+     accent. The accent means "you can click this"; the semantic colours mean
+     "this is the clinical state". Reusing one for the other is how a dashboard
+     stops being scannable. -->
+<style>
+  :root {
+    --gh-ground: #f4f6f9;
+    --gh-surface: #ffffff;
+    --gh-ink: #14181f;
+    --gh-muted: #5c6672;
+    --gh-line: #e2e7ed;
+    --gh-line-strong: #cfd6de;
+    --gh-accent: #0d6a87;
+    --gh-accent-soft: #e8f2f6;
+    --gh-critical: #b3261e;
+    --gh-critical-soft: #fdf0ef;
+    --gh-warn: #8a5a00;
+    --gh-warn-soft: #fdf6e7;
+    --gh-ok: #1a6b47;
+    --gh-ok-soft: #edf7f2;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--gh-ground); }
+
+  .gh {
+    font-family: Lato, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--gh-ink);
+    background: var(--gh-ground);
+    min-height: 100vh;
+    padding: 0 28px 56px;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .gh-inner { max-width: 1360px; margin: 0 auto; }
+
+  /* --- header ------------------------------------------------------------ */
+  .gh-top {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--gh-ground);
+    padding: 22px 0 14px;
+    border-bottom: 1px solid var(--gh-line);
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 20px; flex-wrap: wrap;
+  }
+  .gh-title { font-size: 21px; font-weight: 700; letter-spacing: -0.015em; }
+  .gh-sub { color: var(--gh-muted); font-size: 12.5px; margin-top: 3px; }
+  .gh-stats { display: flex; gap: 26px; }
+  .gh-stat { text-align: right; }
+  .gh-stat-n {
+    font-size: 25px; font-weight: 700; line-height: 1.1;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  }
+  .gh-stat-n.is-critical { color: var(--gh-critical); }
+  .gh-stat-l {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--gh-muted); font-weight: 600;
+  }
+
+  /* --- high risk band ---------------------------------------------------- */
+  .gh-band { margin: 24px 0 34px; }
+  .gh-band-h {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--gh-critical); margin-bottom: 10px;
+  }
+  .gh-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--gh-critical); flex: none;
+  }
+  .gh-risk {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--gh-surface);
+    border: 1px solid #f3d4d1;
+    border-left: 3px solid var(--gh-critical);
+    border-radius: 5px; padding: 13px 16px; margin-bottom: 8px;
+  }
+  .gh-risk-name { font-weight: 700; font-size: 14.5px; flex: none; min-width: 150px; }
+  .gh-risk-why { flex: 1 1 auto; min-width: 0; color: var(--gh-ink); }
+  .gh-risk-2nd { color: var(--gh-muted); font-size: 12.5px; margin-top: 2px; }
+
+  /* --- card grid --------------------------------------------------------- */
+  .gh-h2 {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--gh-muted); margin: 0 0 12px;
+  }
+  .gh-grid {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  }
+  .gh-card {
+    background: var(--gh-surface); border: 1px solid var(--gh-line);
+    border-radius: 7px; padding: 16px 17px 14px; display: flex;
+    flex-direction: column; gap: 13px;
+  }
+  .gh-card.is-critical { border-color: #f0cecb; box-shadow: inset 3px 0 0 var(--gh-critical); }
+
+  .gh-card-top { display: flex; align-items: baseline; gap: 10px; }
+  .gh-name { font-weight: 700; font-size: 15px; flex: 1 1 auto; min-width: 0; }
+  .gh-link {
+    font-size: 12px; font-weight: 600; color: var(--gh-accent);
+    text-decoration: none; white-space: nowrap;
+  }
+  .gh-link:hover { text-decoration: underline; }
+  .gh-link:focus-visible { outline: 2px solid var(--gh-accent); outline-offset: 2px; }
+
+  .gh-rx { font-size: 12.5px; color: var(--gh-muted); }
+  .gh-rx strong { color: var(--gh-ink); font-weight: 600; }
+
+  /* --- weight ------------------------------------------------------------ */
+  .gh-weight { display: flex; align-items: center; gap: 14px; }
+  .gh-weight-fig { flex: none; }
+  .gh-weight-n {
+    font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em; line-height: 1.15;
+  }
+  .gh-weight-d { font-size: 11.5px; color: var(--gh-muted); font-variant-numeric: tabular-nums; }
+  .gh-weight-d.is-drop { color: var(--gh-critical); font-weight: 600; }
+  .gh-spark { flex: 1 1 auto; min-width: 0; }
+  .gh-spark svg { display: block; width: 100%; height: 44px; }
+  .gh-nodata {
+    font-size: 12px; color: var(--gh-muted); font-style: italic;
+    padding: 11px 0;
+  }
+
+  /* --- labs -------------------------------------------------------------- */
+  .gh-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .gh-chip {
+    display: inline-flex; align-items: baseline; gap: 5px;
+    font-size: 11.5px; padding: 3px 8px; border-radius: 4px;
+    border: 1px solid transparent; font-variant-numeric: tabular-nums;
+  }
+  .gh-chip b { font-weight: 600; }
+  .gh-chip.is-ok { background: var(--gh-ok-soft); color: var(--gh-ok); border-color: #cfe7dc; }
+  .gh-chip.is-warn { background: var(--gh-warn-soft); color: var(--gh-warn); border-color: #f0e0bd; }
+  .gh-chip.is-none { background: #f3f5f7; color: var(--gh-muted); border-color: var(--gh-line-strong); }
+
+  .gh-meta {
+    display: flex; justify-content: space-between; gap: 12px;
+    font-size: 12.5px; color: var(--gh-muted);
+    border-top: 1px solid var(--gh-line); padding-top: 11px;
+  }
+  .gh-meta b { color: var(--gh-ink); font-weight: 600; }
+
+  /* --- actions ----------------------------------------------------------- */
+  .gh-todo { display: flex; flex-direction: column; gap: 7px; }
+  .gh-todo-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--gh-warn-soft); border: 1px solid #f2e3c2;
+    border-radius: 5px; padding: 8px 9px 8px 11px;
+  }
+  .gh-todo-t { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--gh-warn); }
+  .gh-btn {
+    flex: none; font: inherit; font-size: 11.5px; font-weight: 700;
+    color: #fff; background: var(--gh-accent); border: 1px solid var(--gh-accent);
+    border-radius: 4px; padding: 5px 11px; cursor: pointer; white-space: nowrap;
+  }
+  .gh-btn:hover { background: #0a5a73; }
+  .gh-btn:focus-visible { outline: 2px solid var(--gh-ink); outline-offset: 2px; }
+  .gh-btn[disabled] {
+    background: var(--gh-ok-soft); border-color: #cfe7dc;
+    color: var(--gh-ok); cursor: default;
+  }
+  .gh-btn.is-error { background: var(--gh-critical); border-color: var(--gh-critical); }
+  /* The header action is secondary to the per-card ones: same shape, no fill. */
+  .gh-btn.is-ghost {
+    background: var(--gh-surface); color: var(--gh-accent);
+    border-color: var(--gh-line-strong); font-size: 12px; padding: 7px 13px;
+  }
+  .gh-btn.is-ghost:hover { background: var(--gh-accent-soft); border-color: var(--gh-accent); }
+  .gh-btn.is-ghost[disabled] { color: var(--gh-ok); border-color: #cfe7dc; }
+  .gh-actions { display: flex; align-items: center; gap: 12px; }
+
+  .gh-empty {
+    background: var(--gh-surface); border: 1px solid var(--gh-line);
+    border-radius: 7px; padding: 34px; text-align: center; color: var(--gh-muted);
+  }
+  .gh-foot {
+    margin-top: 34px; padding-top: 14px; border-top: 1px solid var(--gh-line);
+    font-size: 11.5px; color: var(--gh-muted); line-height: 1.6;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .gh-btn { transition: background 120ms ease; }
+  }
+</style>
+
+<div class="gh">
+ <div class="gh-inner">
+
+  <header class="gh-top">
+    <div>
+      <div class="gh-title">GLP-1 monitoring</div>
+      <div class="gh-sub">
+        Every patient on an active GLP-1 &middot; scanned {{ scanned_at }}
+      </div>
+    </div>
+    <div class="gh-actions">
+      <button class="gh-btn is-ghost" type="button" data-action="scan"
+              title="Files tasks for every patient the safety rule flags. Runs automatically overnight.">Run scan now</button>
+    <div class="gh-stats">
+      <div class="gh-stat">
+        <div class="gh-stat-n {% if high_risk %}is-critical{% endif %}">{{ high_risk|length }}</div>
+        <div class="gh-stat-l">High risk</div>
+      </div>
+      <div class="gh-stat">
+        <div class="gh-stat-n">{{ patients|length }}</div>
+        <div class="gh-stat-l">Watched</div>
+      </div>
+      <div class="gh-stat">
+        <div class="gh-stat-n">{{ open_items }}</div>
+        <div class="gh-stat-l">Open items</div>
+      </div>
+    </div>
+    </div>
+  </header>
+
+  {% if high_risk %}
+    <section class="gh-band">
+      <h2 class="gh-band-h"><span class="gh-dot"></span>Needs contact today</h2>
+      {% for patient in high_risk %}
+        <div class="gh-risk">
+          <div class="gh-risk-name">{{ patient.name }}</div>
+          <div class="gh-risk-why">
+            {{ patient.risk_reason }}
+            {% if patient.missing %}
+              <div class="gh-risk-2nd">{{ patient.missing|length }} other item{{ patient.missing|pluralize }} outstanding</div>
+            {% endif %}
+          </div>
+          <a class="gh-link" target="_top" href="/patient/{{ patient.patient_id }}">Open chart &rarr;</a>
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  <h2 class="gh-h2">Watched patients</h2>
+
+  {% if not patients %}
+    <div class="gh-empty">
+      No patients are on an active GLP-1 medication. This hub lists everyone
+      Canvas records as currently prescribed one.
+    </div>
+  {% else %}
+    <div class="gh-grid">
+      {% for patient in patients %}
+        <article class="gh-card {% if patient.is_high_risk %}is-critical{% endif %}"
+                 data-patient="{{ patient.patient_id }}">
+
+          <div class="gh-card-top">
+            <div class="gh-name">{{ patient.name }}</div>
+            <a class="gh-link" target="_top" href="/patient/{{ patient.patient_id }}">Chart &rarr;</a>
+          </div>
+
+          <div class="gh-rx">
+            {% for rx in patient.prescriptions %}
+              <div><strong>{{ rx.name }}</strong>{% with days=rx.days_on_display %}{% if days %} &middot; {{ days }}{% endif %}{% endwith %}</div>
+            {% empty %}
+              <div>No active prescription recorded</div>
+            {% endfor %}
+          </div>
+
+          {% if patient.spark %}
+            <div class="gh-weight">
+              <div class="gh-weight-fig">
+                <div class="gh-weight-n">{{ patient.latest_weight|floatformat:0 }}<span style="font-size:12px;font-weight:600"> lb</span></div>
+                {% if patient.weight_change %}
+                  <div class="gh-weight-d {% if patient.weight_change > 0 %}is-drop{% endif %}">
+                    {% if patient.weight_change > 0 %}&darr;{% else %}&uarr;{% endif %}
+                    {{ patient.weight_change|floatformat:0 }} lb
+                  </div>
+                {% endif %}
+              </div>
+              <div class="gh-spark">
+                <svg viewBox="0 0 220 44" preserveAspectRatio="none" role="img"
+                     aria-label="Recent weight trend for {{ patient.name }}">
+                  <polygon points="{{ patient.spark_area }}"
+                           fill="{% if patient.is_high_risk %}#b3261e{% else %}#0d6a87{% endif %}"
+                           fill-opacity="0.09"></polygon>
+                  <polyline points="{{ patient.spark }}" fill="none"
+                            stroke="{% if patient.is_high_risk %}#b3261e{% else %}#0d6a87{% endif %}"
+                            stroke-width="1.8" stroke-linejoin="round"
+                            stroke-linecap="round"></polyline>
+                  {% if patient.spark_last %}
+                    <circle cx="{{ patient.spark_last.0 }}" cy="{{ patient.spark_last.1 }}" r="2.8"
+                            fill="{% if patient.is_high_risk %}#b3261e{% else %}#0d6a87{% endif %}"></circle>
+                  {% endif %}
+                </svg>
+              </div>
+            </div>
+          {% else %}
+            <div class="gh-nodata">Not enough weigh-ins to plot a trend.</div>
+          {% endif %}
+
+          <div class="gh-chips">
+            {% for chip in patient.chips %}
+              <span class="gh-chip is-{{ chip.state }}">{{ chip.label }} <b>{{ chip.text }}</b></span>
+            {% endfor %}
+          </div>
+
+          <div class="gh-meta">
+            <span>Next visit
+              {% if patient.next_followup %}<b>{{ patient.next_followup|date:"M j" }}</b>
+              {% else %}<b>not booked</b>{% endif %}
+            </span>
+            <span>{{ patient.missing|length }} open item{{ patient.missing|pluralize }}</span>
+          </div>
+
+          {% if patient.missing %}
+            <div class="gh-todo">
+              {% for item in patient.missing %}
+                <div class="gh-todo-row">
+                  <span class="gh-todo-t">{{ item.label }}</span>
+                  <button class="gh-btn" type="button"
+                          data-patient="{{ patient.patient_id }}"
+                          data-gap="{{ item.gap_key }}"
+                          data-summary="{{ item.task_summary }}">Create task</button>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="gh-foot">
+    High risk means the safety rule fired &mdash; rapid weight loss with a warning
+    sign, or rapid loss nobody has screened. It is the same rule the chart banner
+    and the nightly task use, so these three can never disagree.
+    <br>
+    Creating a task here files it against the patient with the plugin's marker,
+    so the nightly scan will not raise a duplicate. The scan runs itself at
+    07:00 UTC; <strong>Run scan now</strong> does the same work immediately.
+  </div>
+
+ </div>
+</div>
+
+<script>
+  // Buttons post to the plugin's own authenticated route. The page is served
+  // from that same route, so this is a same-origin call and needs no CORS.
+  document.addEventListener('click', async (event) => {
+    const button = event.target.closest('.gh-btn');
+    if (!button || button.disabled) return;
+
+    const scanning = button.dataset.action === 'scan';
+    button.disabled = true;
+    button.textContent = scanning ? 'Scanning…' : 'Filing…';
+
+    try {
+      const response = await fetch(scanning ? '{{ scan_url }}' : '{{ task_url }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(scanning ? {} : {
+          patient_id: button.dataset.patient,
+          gap_key: button.dataset.gap,
+          summary: button.dataset.summary,
+        }),
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      // The effects are applied after this request returns, so the button
+      // reports what was asked for rather than pretending to have verified it.
+      if (scanning) {
+        const result = await response.json();
+        const filed = result.filed || 0;
+        button.textContent = filed
+          ? filed + ' task' + (filed === 1 ? '' : 's') + ' filed'
+          : 'Nothing new to file';
+      } else {
+        button.textContent = 'Task filed';
+      }
+    } catch (error) {
+      button.disabled = false;
+      button.classList.add('is-error');
+      button.textContent = scanning ? 'Scan failed — retry' : 'Retry';
+    }
+  });
+</script>

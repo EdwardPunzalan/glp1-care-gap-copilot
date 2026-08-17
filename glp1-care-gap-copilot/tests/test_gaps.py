@@ -24,6 +24,7 @@ from glp1_care_gap_copilot.gaps import (
 )
 from tests.factories import (
     add_appointment,
+    add_lab_result,
     add_condition,
     add_medication,
     add_observation,
@@ -64,15 +65,6 @@ def on_therapy(days: int = DAYS_ON_THERAPY) -> Patient:
     patient = PatientFactory.create()
     add_medication(patient, "Semaglutide 0.5 MG", start_date=days_ago(days))
     return patient
-
-
-def add_lab_result(patient: Patient, lab_name: str, performed_at: datetime) -> None:
-    """Record a resulted lab of the given name for the patient."""
-    report = LabReportFactory.create(
-        patient=patient, date_performed=performed_at, deleted=False
-    )
-    test = LabTestFactory.create(report=report, ontology_test_name=lab_name)
-    LabValueFactory.create(report=report, test=test, value="5.4", units="%")
 
 
 def comorbid_patient(days: int = DAYS_ON_THERAPY) -> Patient:

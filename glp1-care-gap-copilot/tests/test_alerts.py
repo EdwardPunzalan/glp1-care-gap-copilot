@@ -1,12 +1,8 @@
-"""Panel-wide alert scanning, the tasks it files, and the app drawer surfaces."""
+"""Panel-wide alert scanning and the tasks it files."""
 
-import json
-from typing import Any
 from unittest.mock import Mock, patch
 
 from canvas_sdk.effects import EffectType
-from canvas_sdk.events import EventType
-from canvas_sdk.handlers.application import Application
 from canvas_sdk.test_utils.factories import PatientFactory, TaskFactory
 from canvas_sdk.v1.data.task import TaskStatus
 
@@ -14,10 +10,6 @@ from glp1_care_gap_copilot.alerts import patients_weighed_since, scan_for_alerts
 from glp1_care_gap_copilot.config import Config
 from glp1_care_gap_copilot.dedupe import patients_with_open_tasks, task_title
 from glp1_care_gap_copilot.gaps import GAP_SAFETY_CHECK_DUE, GAP_SAFETY_REVIEW
-from glp1_care_gap_copilot.handlers.alert_dashboard_handler import (
-    GLP1AlertDashboard,
-    GLP1AlertScanNow,
-)
 from glp1_care_gap_copilot.handlers.alert_scan_handler import (
     MAX_TASKS_PER_RUN,
     GLP1AlertScan,
@@ -269,115 +261,7 @@ def test_the_scan_reuses_the_chart_rule_rather_than_restating_it() -> None:
     evaluate.assert_called_once_with(str(patient.id), CONFIG)
 
 
-# --- the app drawer surfaces --------------------------------------------------
-
-
-def open_app(
-    app_class: type[Application], secrets: dict[str, str] | None = None
-) -> Any:
-    """Open an application and return its effects."""
-    event = Mock()
-    event.type = EventType.APPLICATION__ON_OPEN
-    handler = app_class(event=event, secrets=secrets or {})
-    return handler.on_open()
-
-
-def test_the_dashboard_lists_flagged_patients() -> None:
-    patient = rapid_loss_patient()
-
-    effect = open_app(GLP1AlertDashboard)
-    content = json.loads(effect.payload)["data"]["content"]
-
-    # The row carries the same wording the chart card uses.
-    assert "not assessed" in content
-    assert str(patient.id) in content
-    assert "Screen" in content
-
-
-def test_the_dashboard_says_so_when_nothing_is_flagged() -> None:
-    glp1_patient()
-
-    content = json.loads(open_app(GLP1AlertDashboard).payload)["data"]["content"]
-
-    assert "No safety signals" in content
-
-
-def test_the_dashboard_files_nothing() -> None:
-    rapid_loss_patient()
-
-    effect = open_app(GLP1AlertDashboard)
-
-    # Reading the list must never create work; otherwise every glance files
-    # another round of tasks.
-    assert effect.type == EffectType.LAUNCH_MODAL
-
-
-def test_the_dashboard_still_opens_when_the_scan_breaks() -> None:
-    with patch(
-        "glp1_care_gap_copilot.handlers.alert_dashboard_handler.scan_for_alerts",
-        side_effect=RuntimeError("boom"),
-    ):
-        content = json.loads(open_app(GLP1AlertDashboard).payload)["data"]["content"]
-
-    assert "could not be built" in content
-
-
-def test_the_badge_counts_flagged_patients() -> None:
-    rapid_loss_patient()
-    rapid_loss_patient()
-    handler = GLP1AlertDashboard(event=Mock(), secrets={})
-
-    assert handler.compute_notification_badge() == 2
-
-
-def test_the_badge_returns_zero_to_clear_itself() -> None:
-    glp1_patient()
-    handler = GLP1AlertDashboard(event=Mock(), secrets={})
-
-    # Zero clears a stale badge; None would leave the old number showing.
-    assert handler.compute_notification_badge() == 0
-
-
-def test_a_broken_badge_shows_nothing_rather_than_a_wrong_number() -> None:
-    handler = GLP1AlertDashboard(event=Mock(), secrets={})
-
-    with patch(
-        "glp1_care_gap_copilot.handlers.alert_dashboard_handler.scan_for_alerts",
-        side_effect=RuntimeError("boom"),
-    ):
-        assert handler.compute_notification_badge() is None
-
-
-def test_the_manual_scan_files_tasks_and_reports() -> None:
-    rapid_loss_patient()
-
-    effects = open_app(GLP1AlertScanNow)
-    kinds = [effect.type for effect in effects]
-
-    assert EffectType.CREATE_TASK in kinds
-    assert EffectType.LAUNCH_MODAL in kinds
-    modal = next(e for e in effects if e.type == EffectType.LAUNCH_MODAL)
-    assert "1" in json.loads(modal.payload)["data"]["content"]
-
-
-def test_the_manual_scan_explains_an_empty_run() -> None:
-    glp1_patient()
-
-    effects = open_app(GLP1AlertScanNow)
-    modal = next(e for e in effects if e.type == EffectType.LAUNCH_MODAL)
-
-    assert "Nothing to file" in json.loads(modal.payload)["data"]["content"]
-
-
-def test_a_failed_manual_scan_files_nothing_and_says_so() -> None:
-    with patch(
-        "glp1_care_gap_copilot.handlers.alert_dashboard_handler.run_scan",
-        side_effect=RuntimeError("boom"),
-    ):
-        effect = open_app(GLP1AlertScanNow)
-
-    assert effect.type == EffectType.LAUNCH_MODAL
-    assert "nothing was filed" in json.loads(effect.payload)["data"]["content"]
+# --- dedupe ------------------------------------------------------------------
 
 
 def test_no_patients_means_no_task_query() -> None:

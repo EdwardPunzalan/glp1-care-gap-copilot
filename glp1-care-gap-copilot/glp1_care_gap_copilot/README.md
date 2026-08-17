@@ -2,18 +2,25 @@
 
 Surfaces GLP-1 monitoring care gaps in one protocol card when a clinician opens a
 patient's chart or note, with one-click shortcuts to act on them — plus a chart
-summary section graphing recent weigh-ins and flagging rapid weight loss.
+summary section graphing recent weigh-ins and flagging rapid weight loss, and a
+whole-panel [monitoring hub](#the-monitoring-hub) for the patients nobody opened.
 
 ## What it is — and is not
 
 **It is** a copilot: it reads the chart, computes care gaps against configurable
 thresholds, and shows them in one place.
 
-**It is not** an autonomous agent. It never creates a task, never orders a lab,
-and never writes to the chart on its own. Every write happens only when a
-clinician clicks a button, and even then the command is *staged into the note
-uncommitted* — the clinician reviews and signs it. The narrative sentence
-restates detected facts; it makes no clinical decisions.
+**It is not** an autonomous agent. **It never writes to the chart.** No
+diagnosis, no medication, no lab order and no note content is ever created
+without a clinician: every chart command is *staged into the note uncommitted*
+for them to review and sign. The narrative sentence restates detected facts; it
+makes no clinical decisions.
+
+The one thing it does create on its own is a **task** — the nightly safety scan
+files them so a patient nobody opened still gets seen. A task is a request for a
+human to look, not a clinical record, and it is the mechanism that makes the
+plugin useful to the patient who is missed rather than only to the one whose
+chart is already open.
 
 ## When it runs
 
@@ -26,7 +33,8 @@ restates detected facts; it makes no clinical decisions.
 | `SHOW_CHART_PATIENT_HEADER_BUTTON` | Weight trend button | The patient header decides which buttons to show |
 | `ACTION_BUTTON_CLICKED` | Weight trend button | The "Weight trend" button is clicked |
 | `CRON` | Alert scan | Nightly at 07:00 UTC |
-| `APPLICATION__ON_OPEN` | Alert apps | A GLP-1 alert app is opened from the drawer |
+| `APPLICATION__ON_OPEN` | Monitoring hub | The GLP-1 Monitoring icon is opened from the drawer |
+| `SIMPLE_API_REQUEST` | Hub API | The hub page loads, or one of its buttons is pressed |
 
 The first two events target the Patient. Neither is on Canvas's
 [disallowed list](https://docs.canvasmedical.com/sdk/effects/) for
@@ -308,8 +316,11 @@ opened the modal. Every `LaunchModalEffect` in the SDK documentation is returned
 from an `ActionButton.handle()` or an `Application.on_open()`, and that is the
 path this uses.
 
-Dropping the endpoint also removed the plugin's only HTTP surface, so it still
-has no API, no authentication code, and no patient identifier in any URL.
+The plugin does now have an HTTP surface — the [monitoring hub](#the-monitoring-hub)
+serves its page and files its tasks over one — but that surface is staff-session
+authenticated and carries no patient identifier in any URL. This modal is not
+served through it, for the reason above: an effect returned from a `fetch` never
+opened one.
 
 ### Chart summary layout — read before deploying
 
@@ -439,7 +450,7 @@ clinical assertion; silence is not.
 
 The chart card only fires when someone opens the chart — which means the patient
 nobody opened, the one most likely to be missed, is exactly the one it cannot
-help. Three surfaces invert that.
+help. Two surfaces invert that.
 
 ### The nightly scan
 
@@ -466,29 +477,58 @@ per-patient lookup is the shape that turns a scheduled job into an outage.
 batch with a hard size ceiling, so an unbounded run could silently lose all of
 them; hitting the cap is logged as an error rather than passed over.
 
-### The dashboard
+### The monitoring hub
 
-**GLP-1 Safety Alerts** is a `global`-scope application — an app-drawer icon
-available outside any chart. It lists flagged patients, most urgent first, each
-linking into the chart.
+**GLP-1 Monitoring** is a `global`-scope application — an app-drawer icon
+available outside any chart. It opens as a **full page**, not a modal: this is
+somewhere a clinician starts their day, not a dialog they dismiss.
 
-Its icon carries a **notification badge** with the count, which is the real point:
-a number the clinician sees without opening anything. Zero clears a stale badge;
-a failure returns `None` so a broken count never shows a wrong one.
+Its icon carries a **notification badge** counting every high-risk patient, which
+is the real point: a number the clinician sees without opening anything. Zero
+clears a stale badge; a failure returns `None` so a broken count never shows a
+wrong one.
 
-**The dashboard never files anything.** Opening it only reads.
+The page has two bands:
 
-### Running the scan on demand
+- **Needs contact today** — every patient the safety rule currently flags, with
+  the reason and a link into the chart.
+- **Watched patients** — one card per patient on an active GLP-1, high risk
+  first, then alphabetical. Each card carries the prescriptions and time on
+  therapy, a weight sparkline with the latest reading and the change across it,
+  lab recency chips, and the next booked visit.
 
-**Run GLP-1 Alert Scan** is a second application that runs the same scan
-immediately and reports what it filed. It exists so the nightly job is testable
-without waiting for 07:00.
+**Anything missing gets a Create task button.** Stale weight, overdue labs, no
+follow-up and an unscreened rapid drop each file a task carrying the same dedupe
+marker the chart card and nightly scan use, so none of the three can raise a
+duplicate of another's task.
 
-It is a separate icon rather than a button inside the dashboard for two reasons:
-an application runs `on_open` every time it is opened, so a combined app would
-file tasks every time somebody glanced at the list; and an in-page button would
-need an HTTP endpoint for the page to call, which this plugin deliberately does
-not have.
+**Run scan now** in the header runs the nightly job immediately, so it is
+testable without waiting for 07:00. It calls the same `run_scan` the cron does —
+including its dedupe — so pressing it twice does not double the queue.
+
+The scan button used to be a second app-drawer icon, because a modal has nowhere
+to post to. A page with its own authenticated route does not need one.
+
+#### The route
+
+`GLP1HubAPI` is a `SimpleAPI` gated on `StaffSessionAuthMixin`. Besides refusing
+anonymous requests, the session means a task filed from the page is attributed to
+the clinician who clicked it rather than to a plugin identity.
+
+`POST /task` accepts only an **allow-listed** set of gap keys. The body comes
+from a browser, and an unrecognised key would write an unmarked task title that
+the dedupe could never match again. It answers `202 Accepted`, not `201`: effects
+are applied *after* the handler returns, so the record does not exist yet and
+claiming otherwise would be a lie the page cannot check.
+
+#### Cost
+
+The page is bulk-loaded: cohort, weights, labs and appointments are **four
+queries in total**, joined in Python, regardless of how many patients are on the
+page — plus the safety scan, which is bounded by recent weigh-ins. The
+per-patient shape reads more naturally and would cost four queries *each*.
+`HUB_MAX_PATIENTS` (default 100) caps the cohort and `HUB_WEIGHT_DAYS` (365) the
+sparkline window. A test asserts six patients cost exactly what one does.
 
 ## Configuration
 
@@ -528,6 +568,8 @@ as an ordinary entry, because an empty cohort would silently disable the plugin.
 | `SAFETY_MIN_FINDINGS` | `1` | How many of the seven warning signs must accompany the drop. At `1` this errs toward calling the patient; raise it to demand corroboration |
 | `ALERT_SCAN_LOOKBACK_DAYS` | `2` | How far back the nightly scan looks for new weigh-ins. Overlap so a failed run leaves no gap |
 | `ALERT_SCAN_MAX_PATIENTS` | `500` | Safety valve on one scan, not a paging cursor. Hitting it is logged |
+| `HUB_MAX_PATIENTS` | `100` | Cards rendered on the monitoring hub |
+| `HUB_WEIGHT_DAYS` | `365` | How far back the hub's sparklines read weigh-ins |
 
 ## Performance
 
@@ -541,6 +583,7 @@ what matters. Measured against a real database:
 | In scope, 39 observations + 39 appointments + 20 lab reports | **9** |
 | Weight trend section, out of scope | **2** |
 | Weight trend section, in scope | **3** |
+| Monitoring hub, any number of patients | **4** + the safety scan |
 
 The trend section adds a cohort check plus one windowed read of the weigh-ins.
 Its cost is bounded by `WEIGHT_TREND_POINTS`, not by how often the patient has
@@ -567,7 +610,7 @@ The plugin makes no network calls at all.
 ## Development
 
 ```bash
-uv run pytest                 # 183 tests
+uv run pytest                 # 349 tests, 100% branch coverage
 uv run pytest --cov=glp1_care_gap_copilot --cov-report=term-missing
 uv run mypy glp1_care_gap_copilot tests
 uv run canvas validate glp1_care_gap_copilot   # run before every deploy

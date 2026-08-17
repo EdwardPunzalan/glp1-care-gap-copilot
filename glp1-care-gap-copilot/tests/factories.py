@@ -7,7 +7,12 @@ tests only state the fields relevant to the rule under test.
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from canvas_sdk.test_utils.factories import MedicationFactory
+from canvas_sdk.test_utils.factories import (
+    LabReportFactory,
+    LabTestFactory,
+    LabValueFactory,
+    MedicationFactory,
+)
 from canvas_sdk.v1.data.appointment import Appointment, AppointmentProgressStatus
 from canvas_sdk.v1.data.condition import ClinicalStatus, Condition, ConditionCoding
 from canvas_sdk.v1.data.medication import MedicationCoding, Status
@@ -226,3 +231,12 @@ def add_appointment(
         description="",
         telehealth_instructions_sent=False,
     )
+
+
+def add_lab_result(patient: Patient, lab_name: str, performed_at: datetime) -> None:
+    """Record a resulted lab of the given name for the patient."""
+    report = LabReportFactory.create(
+        patient=patient, date_performed=performed_at, deleted=False
+    )
+    test = LabTestFactory.create(report=report, ontology_test_name=lab_name)
+    LabValueFactory.create(report=report, test=test, value="5.4", units="%")
