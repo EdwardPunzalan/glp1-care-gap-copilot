@@ -654,3 +654,18 @@ def test_a_dated_prescription_still_opens_the_gate_beside_an_undated_one() -> No
     )
 
     assert [item.gap_key for item in missing] == ["labs_overdue"]
+
+
+def test_time_on_therapy_drops_to_the_unit_a_reader_can_hold() -> None:
+    def label(days: int) -> str:
+        patient = WatchedPatient(
+            patient_id="p1",
+            name="Ada",
+            prescriptions=(Prescription("Semaglutide", days_ago(days)),),
+        )
+        return _with_display(patient, CONFIG, now()).prescriptions[0].days_on_display
+
+    assert label(14) == "14 days on therapy"
+    assert label(120) == "4 mo on therapy"
+    # A live chart read "102 mo on therapy", which nobody converts in their head.
+    assert label(3100) == "8 yr on therapy"

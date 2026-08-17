@@ -453,13 +453,17 @@ def _with_display(
     prescriptions = []
     for rx in patient.prescriptions:
         days = rx.days_on(now)
+        # Each unit is dropped once it stops being a number anyone counts. A
+        # long-standing prescription on a live chart read "102 mo on therapy",
+        # which is arithmetic the reader should not have to do.
         if days is None:
             label = ""
+        elif days >= 730:
+            label = f"{days // 365} yr on therapy"
+        elif days >= 60:
+            label = f"{days // 30} mo on therapy"
         else:
-            # Months read better once "days" stops being a number anyone counts.
-            label = (
-                f"{days // 30} mo on therapy" if days >= 60 else f"{days} days on therapy"
-            )
+            label = f"{days} days on therapy"
         prescriptions.append(
             Prescription(name=rx.name, started=rx.started, days_on_display=label)
         )
