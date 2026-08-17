@@ -511,9 +511,14 @@ to post to. A page with its own authenticated route does not need one.
 
 #### The route
 
-`GLP1HubAPI` is a `SimpleAPI` gated on `StaffSessionAuthMixin`. Besides refusing
-anonymous requests, the session means a task filed from the page is attributed to
-the clinician who clicked it rather than to a plugin identity.
+`GLP1HubAPI` is a `SimpleAPI` gated on `StaffSessionAuthMixin`, so an
+unauthenticated request can neither read the panel nor write a task.
+
+**The session authenticates the request; it does not author the record.** A task
+filed from the page shows **Canvas Bot** as its creator, exactly like the ones
+the nightly cron files — confirmed by filing one on a live instance. If the
+practice needs to know which clinician asked for it, that has to be written into
+the task, not inferred from the session.
 
 `POST /task` accepts only an **allow-listed** set of gap keys. The body comes
 from a browser, and an unrecognised key would write an unmarked task title that

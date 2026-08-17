@@ -584,8 +584,11 @@ def test_the_page_offers_the_manual_scan() -> None:
 
 
 def test_the_route_requires_a_staff_session() -> None:
-    """Task attribution depends on it: without a session, tasks would be
-    credited to a plugin identity rather than the clinician who clicked."""
+    """The panel is PHI and the routes write tasks, so neither is anonymous.
+
+    It does not decide authorship: a filed task is created by Canvas Bot
+    regardless, which was only discoverable by filing one on a live instance.
+    """
     from canvas_sdk.handlers.simple_api import StaffSessionAuthMixin
 
     assert issubclass(GLP1HubAPI, StaffSessionAuthMixin)

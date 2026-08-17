@@ -6,9 +6,13 @@ carries a badge with the number of high-risk patients.
 
 `GLP1HubAPI` serves the page's HTML and the two routes its buttons post to —
 one that files a single task, one that runs the nightly scan on demand. All are
-gated on `StaffSessionAuthMixin`: besides refusing anonymous requests, it means
-a task created here is attributed to the clinician who clicked, not to a generic
-plugin identity.
+gated on `StaffSessionAuthMixin`, so an unauthenticated request cannot read the
+panel or write a task.
+
+The session authenticates the *request*; it does not author the record. Tasks
+filed here are created by Canvas Bot, same as the ones the nightly cron files —
+verified on a live instance. Anything that needs to know who asked has to carry
+it in the task itself.
 
 The manual scan lives here rather than behind its own app-drawer icon. It used
 to need one, because a modal has nowhere to post to; a page with its own
