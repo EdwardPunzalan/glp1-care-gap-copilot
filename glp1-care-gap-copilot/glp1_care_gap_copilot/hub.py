@@ -46,14 +46,19 @@ class Prescription:
     """An active GLP-1 the patient is on."""
 
     name: str
-    #: Never null: Canvas requires a start date on a medication.
-    started: datetime
+    #: Nullable in practice. `Medication.start_date` is declared non-null on the
+    #: SDK model, but real rows on a live instance come back as None — the model
+    #: is a view over a schema that permits it. Trusting the declaration crashed
+    #: the whole page on first contact with production data.
+    started: datetime | None
     #: Precomputed for the page. Django templates cannot call a method with
     #: arguments, so anything needing `now` is resolved at load time.
     days_on_display: str = ""
 
-    def days_on(self, now: datetime) -> int:
-        """Whole days since this prescription started."""
+    def days_on(self, now: datetime) -> int | None:
+        """Whole days since this prescription started, if that is known."""
+        if self.started is None:
+            return None
         return max((now - self.started).days, 0)
 
 
@@ -362,8 +367,11 @@ def _missing(
 
     # Longest-running prescription decides the gate, matching the chart rule:
     # switching drugs does not restart the monitoring clock.
-    longest = max((rx.days_on(now) for rx in prescriptions), default=0)
-    if longest >= config.glp1_min_days_for_labs:
+    # A prescription with no start date proves nothing about time on therapy,
+    # so it is skipped rather than counted as day zero. If none of them has a
+    # date, no lab is chased — the chart card would not chase one either.
+    durations = [days for rx in prescriptions if (days := rx.days_on(now)) is not None]
+    if durations and max(durations) >= config.glp1_min_days_for_labs:
         overdue = [
             requirement.label
             for requirement in BASE_REQUIREMENTS
@@ -445,8 +453,13 @@ def _with_display(
     prescriptions = []
     for rx in patient.prescriptions:
         days = rx.days_on(now)
-        # Months read better once "days" stops being a number anyone counts.
-        label = f"{days // 30} mo on therapy" if days >= 60 else f"{days} days on therapy"
+        if days is None:
+            label = ""
+        else:
+            # Months read better once "days" stops being a number anyone counts.
+            label = (
+                f"{days // 30} mo on therapy" if days >= 60 else f"{days} days on therapy"
+            )
         prescriptions.append(
             Prescription(name=rx.name, started=rx.started, days_on_display=label)
         )

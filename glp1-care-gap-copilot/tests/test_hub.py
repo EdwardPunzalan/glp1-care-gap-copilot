@@ -22,7 +22,15 @@ from glp1_care_gap_copilot.handlers.hub_handler import (
     GLP1HubAPI,
     render_hub,
 )
-from glp1_care_gap_copilot.hub import SPARK_POINTS, load_hub, sparkline
+from glp1_care_gap_copilot.hub import (
+    SPARK_POINTS,
+    Prescription,
+    WatchedPatient,
+    _missing,
+    _with_display,
+    load_hub,
+    sparkline,
+)
 from tests.factories import (
     add_appointment,
     add_lab_result,
@@ -593,3 +601,56 @@ def test_the_page_costs_a_fixed_number_of_queries() -> None:
         load_hub(CONFIG, {}, now=NOW)
 
     assert len(captured) == 4
+
+
+# --- a prescription with no start date ----------------------------------------
+#
+# `Medication.start_date` is declared non-null on the SDK model, so the test
+# database will not store a NULL — but live rows on `xpc-dev` come back as None
+# and crashed the entire page. These exercise the paths directly.
+
+
+def test_time_on_therapy_is_unknown_without_a_start_date() -> None:
+    assert Prescription("Semaglutide", None).days_on(NOW) is None
+
+
+def test_a_card_says_nothing_rather_than_guessing_time_on_therapy() -> None:
+    patient = WatchedPatient(
+        patient_id="p1",
+        name="Ada Lovelace",
+        prescriptions=(Prescription("Semaglutide", None),),
+    )
+
+    displayed = _with_display(patient, CONFIG, NOW)
+
+    assert displayed.prescriptions[0].days_on_display == ""
+
+
+def test_labs_are_not_chased_when_no_start_date_is_known() -> None:
+    """The gate is time on therapy; an unknown start cannot clear it."""
+    missing = _missing(
+        weights=[(days_ago(1), 240.0)],
+        labs={},
+        followup=days_ahead(10),
+        prescriptions=[Prescription("Semaglutide", None)],
+        config=CONFIG,
+        now=NOW,
+    )
+
+    assert missing == ()
+
+
+def test_a_dated_prescription_still_opens_the_gate_beside_an_undated_one() -> None:
+    missing = _missing(
+        weights=[(days_ago(1), 240.0)],
+        labs={},
+        followup=days_ahead(10),
+        prescriptions=[
+            Prescription("Semaglutide", None),
+            Prescription("Tirzepatide", days_ago(200)),
+        ],
+        config=CONFIG,
+        now=NOW,
+    )
+
+    assert [item.gap_key for item in missing] == ["labs_overdue"]
