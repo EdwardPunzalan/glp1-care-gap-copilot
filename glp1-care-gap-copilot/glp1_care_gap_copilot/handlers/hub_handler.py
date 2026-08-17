@@ -45,6 +45,13 @@ TASK_PATH = f"/plugin-io/api/{PLUGIN_NAME}{API_PREFIX}/task"
 SCAN_PATH = f"/plugin-io/api/{PLUGIN_NAME}{API_PREFIX}/scan"
 HUB_TITLE = "GLP-1 Monitoring Hub"
 
+#: Cache buster for the page URL, fixed at import so it changes once per
+#: deploy. The page is a plain 200 at a stable URL, so the browser is entitled
+#: to reuse it — and did: after a fix was deployed the hub kept serving the
+#: previous response until a hard reload. A clinician would have read that as
+#: the plugin being broken.
+_CACHE_BUST = str(int(datetime.now(timezone.utc).timestamp()))
+
 #: Gap keys the page is allowed to file. An allow-list rather than trusting the
 #: posted value: the body comes from a browser and must not be able to write an
 #: arbitrary task title onto a patient.
@@ -91,7 +98,7 @@ class GLP1Hub(Application):
     def on_open(self) -> Effect | list[Effect]:
         """Open the hub. The page itself is served by `GLP1HubAPI`."""
         return LaunchModalEffect(
-            url=PAGE_PATH,
+            url=f"{PAGE_PATH}?v={_CACHE_BUST}",
             target=LaunchModalEffect.TargetType.PAGE,
             title=HUB_TITLE,
         ).apply()

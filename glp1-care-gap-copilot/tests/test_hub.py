@@ -445,7 +445,9 @@ def test_the_app_opens_a_page_not_a_modal() -> None:
     payload = json.loads(cast(Effect, effect).payload)
 
     assert payload["data"]["target"] == "page"
-    assert payload["data"]["url"] == PAGE_PATH
+    # Cache-busted: a stale response at this URL once made a deployed fix look
+    # like the plugin was broken.
+    assert payload["data"]["url"].startswith(f"{PAGE_PATH}?v=")
 
 
 def test_the_badge_counts_every_high_risk_patient() -> None:

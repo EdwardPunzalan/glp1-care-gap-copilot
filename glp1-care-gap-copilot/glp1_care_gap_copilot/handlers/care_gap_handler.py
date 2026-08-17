@@ -61,9 +61,10 @@ class GLP1CareGapHandler(BaseHandler):
 
         cohort = evaluate_cohort(patient_id, config)
         if not cohort.in_scope:
-            # Out of scope produces no card at all, not an empty one. Logged
-            # because "no card" and "plugin broken" look identical in the UI.
-            log.info("[glp1-care-gap-copilot] patient out of scope; no card")
+            # Out of scope produces no card at all, not an empty one. Not
+            # logged: this is the common path — most patients are not on a
+            # GLP-1 — so a line here fires on nearly every chart open and
+            # buries the lines that mean something.
             return []
 
         now = datetime.now(timezone.utc)

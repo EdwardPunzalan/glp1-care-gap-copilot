@@ -526,6 +526,14 @@ the dedupe could never match again. It answers `202 Accepted`, not `201`: effect
 are applied *after* the handler returns, so the record does not exist yet and
 claiming otherwise would be a lie the page cannot check.
 
+#### Staying fresh
+
+The page URL carries a `?v=` cache buster fixed at plugin load, so it changes
+once per deploy. Without it the browser is entitled to reuse a plain `200` at a
+stable URL — and did: after a fix was deployed the hub kept serving the previous
+response until a hard reload, which reads as a broken plugin rather than a
+cached one.
+
 #### Cost
 
 The page is bulk-loaded: cohort, weights, labs and appointments are **four
@@ -615,7 +623,7 @@ The plugin makes no network calls at all.
 ## Development
 
 ```bash
-uv run pytest                 # 349 tests, 100% branch coverage
+uv run pytest                 # 354 tests, 100% branch coverage
 uv run pytest --cov=glp1_care_gap_copilot --cov-report=term-missing
 uv run mypy glp1_care_gap_copilot tests
 uv run canvas validate glp1_care_gap_copilot   # run before every deploy

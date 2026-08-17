@@ -86,10 +86,14 @@ class GLP1WeightTrendSection(PatientChartSummaryCustomSectionHandler):
             return [self._section(Graph(), NO_WEIGHTS_MESSAGE, config)]
 
         graph, empty_message = build_patient_graph(str(patient_id), config)
-        log.info(
-            "[glp1-care-gap-copilot] weight trend rendered: "
-            f"points={len(graph.points)} flagged={graph.flagged_count}"
-        )
+        # Only a graph that exists is worth a line. This section renders on
+        # every chart summary on the instance, so logging the empty case would
+        # cost one line per chart open to say nothing happened.
+        if graph.points:
+            log.info(
+                "[glp1-care-gap-copilot] weight trend rendered: "
+                f"points={len(graph.points)} flagged={graph.flagged_count}"
+            )
         return [self._section(graph, empty_message, config)]
 
     def _section(self, graph: Graph, empty_message: str, config: Config) -> Effect:
